@@ -12,7 +12,6 @@ import apap.ti._5.flight_2306211660_be.model.Airplane;
 import apap.ti._5.flight_2306211660_be.repository.AirplaneRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.airplane.AddAirplaneRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.airplane.UpdateAirplaneRequestDTO;
-import apap.ti._5.flight_2306211660_be.restdto.response.airline.AirlineResponseDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.airplane.AirplaneResponseDTO;
 
 @Service
@@ -122,6 +121,8 @@ public class AirplaneRestServiceImpl implements AirplaneRestService {
             throw new IllegalStateException("Airplane is already deleted");
         }
 
+        // TODO: ONCE FLIGHT IS IMPLEMENTED
+
         // // Check if airplane is used in active flights
         // List<Flight> activeFlights = flightRepository.findByAirplaneIdAndStatusIn(id, List.of(0, 1, 2)); // Scheduled, In Flight, Delayed
         // if (!activeFlights.isEmpty()) {
@@ -142,22 +143,9 @@ public class AirplaneRestServiceImpl implements AirplaneRestService {
     }
 
     private AirplaneResponseDTO convertToAirplaneResponseDTO(Airplane airplane) {
-        AirlineResponseDTO airlineDTO = null;
-        if (airplane.getAirline() != null) {
-            airlineDTO = AirlineResponseDTO.builder()
-                    .id(airplane.getAirline().getId())
-                    .name(airplane.getAirline().getName())
-                    .country(airplane.getAirline().getCountry())
-                    .createdAt(airplane.getAirline().getCreatedAt())
-                    .updatedAt(airplane.getAirline().getUpdatedAt())
-                    .deletedAt(airplane.getAirline().getDeletedAt())
-                    .build();
-        }
-
         return AirplaneResponseDTO.builder()
                 .id(airplane.getId())
                 .airlineId(airplane.getAirlineId())
-                .airline(airlineDTO)
                 .model(airplane.getModel())
                 .seatCapacity(airplane.getSeatCapacity())
                 .manufactureYear(airplane.getManufactureYear())

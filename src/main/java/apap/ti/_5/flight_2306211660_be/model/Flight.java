@@ -69,7 +69,7 @@ public class Flight {
     private String facilities;
     
     @Column(nullable = false)
-    private Integer status;
+    private Integer status; // 1=Scheduled, 2=In Flight, 3=Finished, 4=Delayed, 5=Cancelled
     
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -78,7 +78,7 @@ public class Flight {
     private LocalDateTime updatedAt;
     
     @Column(name = "is_deleted", nullable = false)
-    private Boolean isDeleted = false;
+    private Boolean isDeleted = false; // FALSE = aktif (default), TRUE = cancelled/nonaktif
     
     @OneToMany(mappedBy = "flight", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<ClassFlight> classes;
@@ -92,6 +92,10 @@ public class Flight {
         this.updatedAt = LocalDateTime.now();
         if (this.isDeleted == null) {
             this.isDeleted = false;
+        }
+        // Set default status to Scheduled (1) upon creation
+        if (this.status == null) {
+            this.status = 1; 
         }
     }
     

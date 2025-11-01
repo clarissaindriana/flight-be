@@ -1,0 +1,21 @@
+package apap.ti._5.flight_2306211660_be.restdto.request.seat;
+
+import java.util.UUID;
+
+import jakarta.validation.constraints.NotNull;
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class UpdateSeatRequestDTO {
+
+    @NotNull(message = "ID cannot be null")
+    private Integer id;
+
+    private UUID passengerId;
+}

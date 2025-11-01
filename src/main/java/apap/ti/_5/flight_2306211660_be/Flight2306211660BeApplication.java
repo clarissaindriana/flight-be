@@ -13,7 +13,9 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
 import apap.ti._5.flight_2306211660_be.restdto.request.airline.AddAirlineRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.airport.AddAirportRequestDTO;
 import apap.ti._5.flight_2306211660_be.restservice.airline.AirlineRestService;
+import apap.ti._5.flight_2306211660_be.restservice.airport.AirportRestService;
 
 @SpringBootApplication
 public class Flight2306211660BeApplication {
@@ -23,7 +25,7 @@ public class Flight2306211660BeApplication {
 	}
 
 	@Bean
-	public CommandLineRunner createDummyAirlines(AirlineRestService airlineRestService) {
+	public CommandLineRunner createDummyAirlinesAndAirports(AirlineRestService airlineRestService, AirportRestService airportRestService) {
 		return args -> {
 			System.out.println("Generating dummy airlines from IATA dataset...");
 
@@ -108,6 +110,84 @@ public class Flight2306211660BeApplication {
 					}
 				}
 				System.out.println("Fallback dummy airlines generation complete.");
+			}
+
+			// Fetch airports data
+			System.out.println("Fetching airports data from FlightStats API...");
+
+			try {
+				URL airportUrl = new URL("https://api.flightstats.com/flex/airports/docs/v1/lts/samples/Airports_response.json");
+				HttpURLConnection airportConnection = (HttpURLConnection) airportUrl.openConnection();
+				airportConnection.setRequestMethod("GET");
+
+				try (BufferedReader airportReader = new BufferedReader(new InputStreamReader(airportConnection.getInputStream()))) {
+					StringBuilder jsonResponse = new StringBuilder();
+					String line;
+					while ((line = airportReader.readLine()) != null) {
+						jsonResponse.append(line);
+					}
+
+					com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+					com.fasterxml.jackson.databind.JsonNode rootNode = objectMapper.readTree(jsonResponse.toString());
+
+					if (rootNode.has("airports")) {
+						com.fasterxml.jackson.databind.JsonNode airportsNode = rootNode.get("airports");
+						System.out.println("Found " + airportsNode.size() + " airports in the API response.");
+
+						// Process airports data
+						for (com.fasterxml.jackson.databind.JsonNode airportNode : airportsNode) {
+							try {
+								String iataCode = airportNode.get("iata").asText();
+								String name = airportNode.get("name").asText();
+								String city = airportNode.get("city").asText();
+								String country = airportNode.get("countryName").asText();
+								Double latitude = null;
+								Double longitude = null;
+								String timezone = null;
+
+								try {
+									latitude = airportNode.get("latitude").asDouble();
+								} catch (Exception e) {
+									// latitude might be null or invalid
+								}
+
+								try {
+									longitude = airportNode.get("longitude").asDouble();
+								} catch (Exception e) {
+									// longitude might be null or invalid
+								}
+
+								try {
+									timezone = airportNode.get("timezoneRegionName").asText();
+								} catch (Exception e) {
+									// timezone might be null or invalid
+								}
+
+								AddAirportRequestDTO airportDto = AddAirportRequestDTO.builder()
+										.iataCode(iataCode)
+										.name(name)
+										.city(city)
+										.country(country)
+										.latitude(latitude)
+										.longitude(longitude)
+										.timezone(timezone)
+										.build();
+
+								airportRestService.createAirport(airportDto);
+							} catch (Exception e) {
+								// Continue with next airport if one fails
+							}
+						}
+					} else {
+						System.out.println("No airports data found in the API response.");
+					}
+				}
+
+				airportConnection.disconnect();
+				System.out.println("Airports data fetch complete.");
+
+			} catch (Exception e) {
+				System.err.println("Failed to fetch airports data: " + e.getMessage());
 			}
 		};
 	}

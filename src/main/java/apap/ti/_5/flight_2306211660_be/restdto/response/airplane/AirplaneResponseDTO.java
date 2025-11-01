@@ -15,7 +15,7 @@ import lombok.NoArgsConstructor;
 public class AirplaneResponseDTO {
     private String id;
     private String airlineId;
-    private AirlineResponseDTO airline;
+    // private AirlineResponseDTO airline;
     private String model;
     private Integer seatCapacity;
     private Integer manufactureYear;

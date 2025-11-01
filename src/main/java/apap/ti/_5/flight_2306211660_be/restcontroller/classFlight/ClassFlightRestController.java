@@ -1,11 +1,11 @@
-package apap.ti._5.flight_2306211660_be.restcontroller.flight;
+package apap.ti._5.flight_2306211660_be.restcontroller.classFlight;
 
 import apap.ti._5.flight_2306211660_be.restdto.response.BaseResponseDTO;
-import apap.ti._5.flight_2306211660_be.restdto.request.flight.AddFlightRequestDTO;
-import apap.ti._5.flight_2306211660_be.restdto.request.flight.UpdateFlightRequestDTO;
-import apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightResponseDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.classFlight.AddClassFlightRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.classFlight.UpdateClassFlightRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.response.classFlight.ClassFlightResponseDTO;
 
-import apap.ti._5.flight_2306211660_be.restservice.flight.FlightRestService;
+import apap.ti._5.flight_2306211660_be.restservice.classFlight.ClassFlightRestService;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
@@ -18,61 +18,61 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api")
-public class FlightRestController {
+public class ClassFlightRestController {
     @Autowired
-    private FlightRestService flightRestService;
+    private ClassFlightRestService classFlightRestService;
 
-    public static final String BASE_URL = "/flight";
-    public static final String VIEW_FLIGHT = BASE_URL + "/{id}";
-    public static final String CREATE_FLIGHT = BASE_URL + "/create";
-    public static final String UPDATE_FLIGHT = BASE_URL + "/update";
-    public static final String DELETE_FLIGHT = BASE_URL + "/delete/{id}";
+    public static final String BASE_URL = "/classFlight";
+    public static final String VIEW_CLASS_FLIGHT = BASE_URL + "/{id}";
+    public static final String CREATE_CLASS_FLIGHT = BASE_URL + "/create";
+    public static final String UPDATE_CLASS_FLIGHT = BASE_URL + "/update";
+    public static final String DELETE_CLASS_FLIGHT = BASE_URL + "/delete/{id}";
 
     @GetMapping(BASE_URL)
-    public ResponseEntity<BaseResponseDTO<List<FlightResponseDTO>>> getAllFlights(
-            @RequestParam(required = false) String airlineId) {
-        var baseResponseDTO = new BaseResponseDTO<List<FlightResponseDTO>>();
+    public ResponseEntity<BaseResponseDTO<List<ClassFlightResponseDTO>>> getAllClassFlights(
+            @RequestParam(required = false) String flightId) {
+        var baseResponseDTO = new BaseResponseDTO<List<ClassFlightResponseDTO>>();
 
-        List<FlightResponseDTO> flights;
+        List<ClassFlightResponseDTO> classFlights;
 
-        if (airlineId != null) {
-            flights = flightRestService.searchFlightsByAirline(airlineId);
+        if (flightId != null) {
+            classFlights = classFlightRestService.getClassFlightsByFlight(flightId);
         } else {
-            flights = flightRestService.getAllFlights();
+            classFlights = classFlightRestService.getAllClassFlights();
         }
 
         baseResponseDTO.setStatus(HttpStatus.OK.value());
-        baseResponseDTO.setData(flights);
-        baseResponseDTO.setMessage("Data Flight Berhasil Ditemukan");
+        baseResponseDTO.setData(classFlights);
+        baseResponseDTO.setMessage("Data ClassFlight Berhasil Ditemukan");
         baseResponseDTO.setTimestamp(new Date());
         return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
     }
 
-    @GetMapping(VIEW_FLIGHT)
-    public ResponseEntity<BaseResponseDTO<FlightResponseDTO>> getFlight(@PathVariable String id) {
-        var baseResponseDTO = new BaseResponseDTO<FlightResponseDTO>();
+    @GetMapping(VIEW_CLASS_FLIGHT)
+    public ResponseEntity<BaseResponseDTO<ClassFlightResponseDTO>> getClassFlight(@PathVariable Integer id) {
+        var baseResponseDTO = new BaseResponseDTO<ClassFlightResponseDTO>();
 
-        FlightResponseDTO flight = flightRestService.getFlight(id);
+        ClassFlightResponseDTO classFlight = classFlightRestService.getClassFlight(id);
 
-        if (flight == null) {
+        if (classFlight == null) {
             baseResponseDTO.setStatus(HttpStatus.NOT_FOUND.value());
-            baseResponseDTO.setMessage("Flight Tidak Ditemukan");
+            baseResponseDTO.setMessage("ClassFlight Tidak Ditemukan");
             baseResponseDTO.setTimestamp(new Date());
             return new ResponseEntity<>(baseResponseDTO, HttpStatus.NOT_FOUND);
         }
         baseResponseDTO.setStatus(HttpStatus.OK.value());
-        baseResponseDTO.setData(flight);
-        baseResponseDTO.setMessage("Data Flight Berhasil Ditemukan");
+        baseResponseDTO.setData(classFlight);
+        baseResponseDTO.setMessage("Data ClassFlight Berhasil Ditemukan");
         baseResponseDTO.setTimestamp(new Date());
         return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
     }
 
-    @PostMapping(CREATE_FLIGHT)
-    public ResponseEntity<BaseResponseDTO<FlightResponseDTO>> createFlight(
-            @Valid @RequestBody AddFlightRequestDTO addFlightRequestDTO,
+    @PostMapping(CREATE_CLASS_FLIGHT)
+    public ResponseEntity<BaseResponseDTO<ClassFlightResponseDTO>> createClassFlight(
+            @Valid @RequestBody AddClassFlightRequestDTO addClassFlightRequestDTO,
             BindingResult bindingResult) {
 
-        var baseResponseDTO = new BaseResponseDTO<FlightResponseDTO>();
+        var baseResponseDTO = new BaseResponseDTO<ClassFlightResponseDTO>();
 
         if (bindingResult.hasFieldErrors()) {
             StringBuilder errorMessages = new StringBuilder();
@@ -88,19 +88,14 @@ public class FlightRestController {
         }
 
         try {
-            FlightResponseDTO flight = flightRestService.createFlight(addFlightRequestDTO);
+            ClassFlightResponseDTO classFlight = classFlightRestService.createClassFlight(addClassFlightRequestDTO);
 
             baseResponseDTO.setStatus(HttpStatus.CREATED.value());
-            baseResponseDTO.setData(flight);
-            baseResponseDTO.setMessage("Data Flight Berhasil Dibuat");
+            baseResponseDTO.setData(classFlight);
+            baseResponseDTO.setMessage("Data ClassFlight Berhasil Dibuat");
             baseResponseDTO.setTimestamp(new Date());
             return new ResponseEntity<>(baseResponseDTO, HttpStatus.CREATED);
 
-        } catch (IllegalArgumentException ex) {
-            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
-            baseResponseDTO.setMessage(ex.getMessage());
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
         } catch (Exception ex) {
             baseResponseDTO.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
             baseResponseDTO.setMessage("Terjadi kesalahan pada server: " + ex.getMessage());
@@ -109,12 +104,12 @@ public class FlightRestController {
         }
     }
 
-    @PutMapping(UPDATE_FLIGHT)
-    public ResponseEntity<BaseResponseDTO<FlightResponseDTO>> updateFlight(
-            @Valid @RequestBody UpdateFlightRequestDTO updateFlightRequestDTO,
+    @PutMapping(UPDATE_CLASS_FLIGHT)
+    public ResponseEntity<BaseResponseDTO<ClassFlightResponseDTO>> updateClassFlight(
+            @Valid @RequestBody UpdateClassFlightRequestDTO updateClassFlightRequestDTO,
             BindingResult bindingResult) {
 
-        var baseResponseDTO = new BaseResponseDTO<FlightResponseDTO>();
+        var baseResponseDTO = new BaseResponseDTO<ClassFlightResponseDTO>();
 
         if (bindingResult.hasFieldErrors()) {
             StringBuilder errorMessages = new StringBuilder();
@@ -131,26 +126,21 @@ public class FlightRestController {
         }
 
         try {
-            FlightResponseDTO flight = flightRestService.updateFlight(updateFlightRequestDTO);
+            ClassFlightResponseDTO classFlight = classFlightRestService.updateClassFlight(updateClassFlightRequestDTO);
 
-            if (flight == null) {
+            if (classFlight == null) {
                 baseResponseDTO.setStatus(HttpStatus.NOT_FOUND.value());
-                baseResponseDTO.setMessage("Flight Tidak Ditemukan");
+                baseResponseDTO.setMessage("ClassFlight Tidak Ditemukan");
                 baseResponseDTO.setTimestamp(new Date());
                 return new ResponseEntity<>(baseResponseDTO, HttpStatus.NOT_FOUND);
             }
 
             baseResponseDTO.setStatus(HttpStatus.OK.value());
-            baseResponseDTO.setData(flight);
-            baseResponseDTO.setMessage("Data Flight Berhasil Diupdate");
+            baseResponseDTO.setData(classFlight);
+            baseResponseDTO.setMessage("Data ClassFlight Berhasil Diupdate");
             baseResponseDTO.setTimestamp(new Date());
             return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
 
-        } catch (IllegalArgumentException | IllegalStateException ex) {
-            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
-            baseResponseDTO.setMessage(ex.getMessage());
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
         } catch (Exception ex) {
             baseResponseDTO.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
             baseResponseDTO.setMessage("Terjadi kesalahan pada server: " + ex.getMessage());
@@ -159,32 +149,27 @@ public class FlightRestController {
         }
     }
 
-    @PostMapping(DELETE_FLIGHT)
-    public ResponseEntity<BaseResponseDTO<FlightResponseDTO>> deleteFlight(
-            @PathVariable String id) {
-        var baseResponseDTO = new BaseResponseDTO<FlightResponseDTO>();
+    @PostMapping(DELETE_CLASS_FLIGHT)
+    public ResponseEntity<BaseResponseDTO<ClassFlightResponseDTO>> deleteClassFlight(
+            @PathVariable Integer id) {
+        var baseResponseDTO = new BaseResponseDTO<ClassFlightResponseDTO>();
 
         try {
-            FlightResponseDTO flight = flightRestService.deleteFlight(id);
+            ClassFlightResponseDTO classFlight = classFlightRestService.deleteClassFlight(id);
 
-            if (flight == null) {
+            if (classFlight == null) {
                 baseResponseDTO.setStatus(HttpStatus.NOT_FOUND.value());
-                baseResponseDTO.setMessage("Flight Tidak Ditemukan");
+                baseResponseDTO.setMessage("ClassFlight Tidak Ditemukan");
                 baseResponseDTO.setTimestamp(new Date());
                 return new ResponseEntity<>(baseResponseDTO, HttpStatus.NOT_FOUND);
             }
 
             baseResponseDTO.setStatus(HttpStatus.OK.value());
-            baseResponseDTO.setData(flight);
-            baseResponseDTO.setMessage("Data Flight Berhasil Dihapus");
+            baseResponseDTO.setData(classFlight);
+            baseResponseDTO.setMessage("Data ClassFlight Berhasil Dihapus");
             baseResponseDTO.setTimestamp(new Date());
             return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
 
-        } catch (IllegalStateException ex) {
-            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
-            baseResponseDTO.setMessage(ex.getMessage());
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
         } catch (Exception ex) {
             baseResponseDTO.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
             baseResponseDTO.setMessage("Terjadi kesalahan pada server: " + ex.getMessage());
