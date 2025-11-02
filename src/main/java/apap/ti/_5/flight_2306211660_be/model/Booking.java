@@ -69,8 +69,7 @@ public class Booking {
     @Column(name = "is_deleted", nullable = false)
     private Boolean isDeleted = false;
     
-    @OneToMany(mappedBy = "booking", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-    private List<Passenger> passengers;
+    // Removed direct relationship to Passenger - using BookingPassenger junction table instead
     
     @OneToMany(mappedBy = "booking", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     private List<BookingPassenger> bookingPassengers;

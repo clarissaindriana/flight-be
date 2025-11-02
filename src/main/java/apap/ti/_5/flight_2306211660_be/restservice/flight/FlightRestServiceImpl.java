@@ -108,6 +108,9 @@ public class FlightRestServiceImpl implements FlightRestService {
             generateSeatsForClass(classFlightResponse.getId(), classDto.getSeatCapacity(), classDto.getClassType());
         }
 
+        // Force fetch the relationships
+        flight = flightRepository.findById(flightId).orElse(flight);
+
         return convertToFlightResponseDTO(flight);
     }
 

@@ -32,13 +32,6 @@ public class Passenger {
     @Id
     private UUID id;
     
-    @Column(name = "booking_id", nullable = false)
-    private String bookingId;
-    
-    @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "booking_id", referencedColumnName = "id", insertable = false, updatable = false)
-    private Booking booking;
-    
     @Column(name = "full_name", nullable = false)
     private String fullName;
     

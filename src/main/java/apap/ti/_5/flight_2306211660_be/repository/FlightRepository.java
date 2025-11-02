@@ -34,4 +34,6 @@ public interface FlightRepository extends JpaRepository<Flight, String> {
     List<Flight> findByAirlineIdAndIsDeleted(String airlineId, Boolean isDeleted);
 
     List<Flight> findByIsDeleted(Boolean isDeleted);
+
+    List<Flight> findByAirplaneIdAndIsDeleted(String airplaneId, Boolean isDeleted);
 }

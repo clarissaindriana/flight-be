@@ -9,7 +9,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import apap.ti._5.flight_2306211660_be.model.Airplane;
+import apap.ti._5.flight_2306211660_be.model.Flight;
 import apap.ti._5.flight_2306211660_be.repository.AirplaneRepository;
+import apap.ti._5.flight_2306211660_be.repository.FlightRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.airplane.AddAirplaneRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.airplane.UpdateAirplaneRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.airplane.AirplaneResponseDTO;
@@ -19,6 +21,9 @@ public class AirplaneRestServiceImpl implements AirplaneRestService {
 
     @Autowired
     private AirplaneRepository airplaneRepository;
+
+    @Autowired
+    private FlightRepository flightRepository;
 
     private static final Random random = new Random();
 
@@ -121,13 +126,11 @@ public class AirplaneRestServiceImpl implements AirplaneRestService {
             throw new IllegalStateException("Airplane is already deleted");
         }
 
-        // TODO: ONCE FLIGHT IS IMPLEMENTED
-
-        // // Check if airplane is used in active flights
-        // List<Flight> activeFlights = flightRepository.findByAirplaneIdAndStatusIn(id, List.of(0, 1, 2)); // Scheduled, In Flight, Delayed
-        // if (!activeFlights.isEmpty()) {
-        //     throw new IllegalStateException("Cannot delete airplane that is used in active flights");
-        // }
+        // Check if airplane is used in active flights
+        List<Flight> activeFlights = flightRepository.findByAirplaneIdAndIsDeleted(id, false);
+        if (!activeFlights.isEmpty()) {
+            throw new IllegalStateException("Cannot delete airplane that is used in active flights");
+        }
 
         airplane.setIsDeleted(true);
         return convertToAirplaneResponseDTO(airplaneRepository.save(airplane));
