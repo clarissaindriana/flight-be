@@ -23,7 +23,7 @@ public class AirplaneRestController {
     private AirplaneRestService airplaneRestService;
 
     public static final String BASE_URL = "/airplane";
-    public static final String VIEW_ALL_AIRPLANES = BASE_URL + "all";
+    public static final String VIEW_ALL_AIRPLANES = BASE_URL + "/all";
     public static final String VIEW_AIRPLANE = BASE_URL + "/{id}";
     public static final String CREATE_AIRPLANE = BASE_URL + "/create";
     public static final String UPDATE_AIRPLANE = BASE_URL + "/update";

@@ -133,6 +133,10 @@ public class FlightRestServiceImpl implements FlightRestService {
         if (flight == null || flight.getIsDeleted()) {
             return null;
         }
+
+        // Update status based on current time
+        flight = updateFlightStatusBasedOnTime(flight);
+
         return convertToFlightResponseDTO(flight);
     }
 
@@ -146,6 +150,11 @@ public class FlightRestServiceImpl implements FlightRestService {
         } else {
             flights = flightRepository.findByIsDeleted(false);
         }
+
+        // Update status for all flights based on current time
+        flights = flights.stream()
+                .map(this::updateFlightStatusBasedOnTime)
+                .collect(Collectors.toList());
 
         // Apply filters
         if (originAirportCode != null && !originAirportCode.trim().isEmpty()) {
@@ -188,6 +197,10 @@ public class FlightRestServiceImpl implements FlightRestService {
         if (flight == null) {
             return null;
         }
+
+        // Update status based on current time
+        flight = updateFlightStatusBasedOnTime(flight);
+
         return convertToFlightDetailResponseDTO(flight);
     }
 
@@ -231,12 +244,34 @@ public class FlightRestServiceImpl implements FlightRestService {
                 .facilities(dto.getFacilities())
                 .build();
 
-        // Check if status should change to Delayed
-        if (dto.getDepartureTime().isAfter(flight.getDepartureTime())) {
+        // Store original departure time for delayed check
+        LocalDateTime originalDepartureTime = flight.getDepartureTime();
+
+        System.out.println("Flight " + flight.getId() + " - Original departure: " + originalDepartureTime + ", New departure: " + dto.getDepartureTime());
+        System.out.println("Is new time after original? " + dto.getDepartureTime().isAfter(originalDepartureTime));
+
+        // Debug: Check if times are equal
+        System.out.println("Are times equal? " + dto.getDepartureTime().equals(originalDepartureTime));
+        System.out.println("Original time hash: " + originalDepartureTime.hashCode() + ", New time hash: " + dto.getDepartureTime().hashCode());
+
+        // Update flight fields
+        flight.setDepartureTime(dto.getDepartureTime());
+        flight.setArrivalTime(dto.getArrivalTime());
+        flight.setTerminal(dto.getTerminal());
+        flight.setGate(dto.getGate());
+        flight.setBaggageAllowance(dto.getBaggageAllowance());
+        flight.setFacilities(dto.getFacilities());
+
+        // Check if status should change to Delayed (only if departure time was moved later)
+        if (dto.getDepartureTime().isAfter(originalDepartureTime)) {
             flight.setStatus(4); // Delayed
+            System.out.println("Flight " + flight.getId() + " marked as DELAYED - original: " + originalDepartureTime + ", new: " + dto.getDepartureTime());
+        } else {
+            System.out.println("Flight " + flight.getId() + " NOT marked as delayed - time not moved later");
         }
 
         flight = flightRepository.save(flight);
+        System.out.println("Flight " + flight.getId() + " saved with status: " + flight.getStatus());
 
         // Update classes if provided
         if (dto.getClasses() != null && !dto.getClasses().isEmpty()) {
@@ -351,5 +386,42 @@ public class FlightRestServiceImpl implements FlightRestService {
                 .isDeleted(flight.getIsDeleted())
                 .classes(classFlights)
                 .build();
+    }
+
+    private Flight updateFlightStatusBasedOnTime(Flight flight) {
+        LocalDateTime now = LocalDateTime.now();
+
+        // Only update status for active flights (not cancelled/deleted)
+        if (flight.getIsDeleted()) {
+            return flight;
+        }
+
+        int currentStatus = flight.getStatus();
+
+        // Status transitions based on time:
+        // 1. Scheduled -> In Flight: departureTime ≤ now < arrivalTime
+        // 2. In Flight -> Finished: now ≥ arrivalTime
+        // 3. Scheduled -> Delayed: handled in updateFlight method
+
+        if (currentStatus == 1 || currentStatus == 4) { // Scheduled or Delayed
+            if (now.isAfter(flight.getDepartureTime()) || now.equals(flight.getDepartureTime())) {
+                if (now.isBefore(flight.getArrivalTime())) {
+                    flight.setStatus(2); // In Flight
+                } else if (now.isAfter(flight.getArrivalTime()) || now.equals(flight.getArrivalTime())) {
+                    flight.setStatus(3); // Finished
+                }
+            }
+        } else if (currentStatus == 2) { // In Flight
+            if (now.isAfter(flight.getArrivalTime()) || now.equals(flight.getArrivalTime())) {
+                flight.setStatus(3); // Finished
+            }
+        }
+
+        // Save the updated flight if status changed
+        if (currentStatus != flight.getStatus()) {
+            flight = flightRepository.save(flight);
+        }
+
+        return flight;
     }
 }
