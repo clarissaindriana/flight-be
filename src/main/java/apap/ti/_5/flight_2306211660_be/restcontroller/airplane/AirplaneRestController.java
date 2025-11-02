@@ -23,12 +23,13 @@ public class AirplaneRestController {
     private AirplaneRestService airplaneRestService;
 
     public static final String BASE_URL = "/airplane";
+    public static final String VIEW_ALL_AIRPLANES = BASE_URL + "all";
     public static final String VIEW_AIRPLANE = BASE_URL + "/{id}";
     public static final String CREATE_AIRPLANE = BASE_URL + "/create";
     public static final String UPDATE_AIRPLANE = BASE_URL + "/update";
     public static final String DELETE_AIRPLANE = BASE_URL + "/{id}/delete";
 
-    @GetMapping(BASE_URL + "/all")
+    @GetMapping(VIEW_ALL_AIRPLANES)
     public ResponseEntity<BaseResponseDTO<List<AirplaneResponseDTO>>> getAllAirplanes(
             @RequestParam(required = false) Boolean isDeleted,
             @RequestParam(required = false) String search,

@@ -16,6 +16,11 @@ public interface FlightRestService {
 
     FlightResponseDTO getFlight(String id);
 
+    List<FlightResponseDTO> getAllFlightsWithFilters(String originAirportCode, String destinationAirportCode,
+                                                   String airlineId, Integer status, Boolean includeDeleted);
+
+    FlightResponseDTO getFlightDetail(String id);
+
     FlightResponseDTO updateFlight(UpdateFlightRequestDTO dto);
 
     FlightResponseDTO deleteFlight(String id);

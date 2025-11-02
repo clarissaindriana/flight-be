@@ -23,12 +23,13 @@ public class AirportRestController {
     private AirportRestService airportRestService;
 
     public static final String BASE_URL = "/airport";
+    public static final String VIEW_ALL_AIRPORTS = BASE_URL + "/all";
     public static final String VIEW_AIRPORT = BASE_URL + "/{iataCode}";
     public static final String CREATE_AIRPORT = BASE_URL + "/create";
     public static final String UPDATE_AIRPORT = BASE_URL + "/update";
     public static final String DELETE_AIRPORT = BASE_URL + "/delete/{iataCode}";
 
-    @GetMapping(BASE_URL)
+    @GetMapping(VIEW_ALL_AIRPORTS)
     public ResponseEntity<BaseResponseDTO<List<AirportResponseDTO>>> getAllAirports(
             @RequestParam(required = false) String search) {
         var baseResponseDTO = new BaseResponseDTO<List<AirportResponseDTO>>();

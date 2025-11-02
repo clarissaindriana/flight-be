@@ -16,6 +16,8 @@ public interface ClassFlightRestService {
 
     ClassFlightResponseDTO getClassFlight(Integer id);
 
+    ClassFlightResponseDTO getClassFlightDetail(Integer id);
+
     ClassFlightResponseDTO updateClassFlight(UpdateClassFlightRequestDTO dto);
 
     ClassFlightResponseDTO deleteClassFlight(Integer id);

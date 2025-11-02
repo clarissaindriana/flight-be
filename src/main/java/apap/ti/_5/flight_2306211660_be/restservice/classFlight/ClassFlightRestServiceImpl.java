@@ -11,12 +11,17 @@ import apap.ti._5.flight_2306211660_be.repository.ClassFlightRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.classFlight.AddClassFlightRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.classFlight.UpdateClassFlightRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.classFlight.ClassFlightResponseDTO;
+import apap.ti._5.flight_2306211660_be.restdto.response.seat.SeatResponseDTO;
+import apap.ti._5.flight_2306211660_be.restservice.seat.SeatRestService;
 
 @Service
 public class ClassFlightRestServiceImpl implements ClassFlightRestService {
 
     @Autowired
     private ClassFlightRepository classFlightRepository;
+
+    @Autowired
+    private SeatRestService seatRestService;
 
     @Override
     public ClassFlightResponseDTO createClassFlight(AddClassFlightRequestDTO dto) {
@@ -60,6 +65,15 @@ public class ClassFlightRestServiceImpl implements ClassFlightRestService {
     }
 
     @Override
+    public ClassFlightResponseDTO getClassFlightDetail(Integer id) {
+        ClassFlight classFlight = classFlightRepository.findById(id).orElse(null);
+        if (classFlight == null) {
+            return null;
+        }
+        return convertToClassFlightDetailResponseDTO(classFlight);
+    }
+
+    @Override
     public ClassFlightResponseDTO updateClassFlight(UpdateClassFlightRequestDTO dto) {
         ClassFlight classFlight = classFlightRepository.findById(dto.getId()).orElse(null);
 
@@ -93,6 +107,21 @@ public class ClassFlightRestServiceImpl implements ClassFlightRestService {
                 .seatCapacity(classFlight.getSeatCapacity())
                 .availableSeats(classFlight.getAvailableSeats())
                 .price(classFlight.getPrice())
+                .build();
+    }
+
+    private ClassFlightResponseDTO convertToClassFlightDetailResponseDTO(ClassFlight classFlight) {
+        // Get seats for this class flight
+        List<SeatResponseDTO> seats = seatRestService.getSeatsByClassFlight(classFlight.getId());
+
+        return ClassFlightResponseDTO.builder()
+                .id(classFlight.getId())
+                .flightId(classFlight.getFlightId())
+                .classType(classFlight.getClassType())
+                .seatCapacity(classFlight.getSeatCapacity())
+                .availableSeats(classFlight.getAvailableSeats())
+                .price(classFlight.getPrice())
+                .seats(seats)
                 .build();
     }
 }

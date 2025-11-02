@@ -23,36 +23,44 @@ public class FlightRestController {
     private FlightRestService flightRestService;
 
     public static final String BASE_URL = "/flight";
+    public static final String ALL_FLIGHTS = BASE_URL + "/all";
     public static final String VIEW_FLIGHT = BASE_URL + "/{id}";
     public static final String CREATE_FLIGHT = BASE_URL + "/create";
     public static final String UPDATE_FLIGHT = BASE_URL + "/update";
     public static final String DELETE_FLIGHT = BASE_URL + "/delete/{id}";
 
-    @GetMapping(BASE_URL)
+    @GetMapping(ALL_FLIGHTS)
     public ResponseEntity<BaseResponseDTO<List<FlightResponseDTO>>> getAllFlights(
-            @RequestParam(required = false) String airlineId) {
+            @RequestParam(required = false) String originAirportCode,
+            @RequestParam(required = false) String destinationAirportCode,
+            @RequestParam(required = false) String airlineId,
+            @RequestParam(required = false) Integer status,
+            @RequestParam(required = false) Boolean includeDeleted) {
         var baseResponseDTO = new BaseResponseDTO<List<FlightResponseDTO>>();
 
-        List<FlightResponseDTO> flights;
+        try {
+            List<FlightResponseDTO> flights = flightRestService.getAllFlightsWithFilters(
+                originAirportCode, destinationAirportCode, airlineId, status, includeDeleted);
 
-        if (airlineId != null) {
-            flights = flightRestService.searchFlightsByAirline(airlineId);
-        } else {
-            flights = flightRestService.getAllFlights();
+            baseResponseDTO.setStatus(HttpStatus.OK.value());
+            baseResponseDTO.setData(flights);
+            baseResponseDTO.setMessage("Data Flight Berhasil Ditemukan");
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
+
+        } catch (Exception ex) {
+            baseResponseDTO.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            baseResponseDTO.setMessage("Terjadi kesalahan pada server: " + ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
         }
-
-        baseResponseDTO.setStatus(HttpStatus.OK.value());
-        baseResponseDTO.setData(flights);
-        baseResponseDTO.setMessage("Data Flight Berhasil Ditemukan");
-        baseResponseDTO.setTimestamp(new Date());
-        return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
     }
 
     @GetMapping(VIEW_FLIGHT)
     public ResponseEntity<BaseResponseDTO<FlightResponseDTO>> getFlight(@PathVariable String id) {
         var baseResponseDTO = new BaseResponseDTO<FlightResponseDTO>();
 
-        FlightResponseDTO flight = flightRestService.getFlight(id);
+        FlightResponseDTO flight = flightRestService.getFlightDetail(id);
 
         if (flight == null) {
             baseResponseDTO.setStatus(HttpStatus.NOT_FOUND.value());

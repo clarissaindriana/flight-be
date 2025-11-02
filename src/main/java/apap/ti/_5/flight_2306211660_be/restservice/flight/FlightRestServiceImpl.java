@@ -137,6 +137,61 @@ public class FlightRestServiceImpl implements FlightRestService {
     }
 
     @Override
+    public List<FlightResponseDTO> getAllFlightsWithFilters(String originAirportCode, String destinationAirportCode,
+                                                          String airlineId, Integer status, Boolean includeDeleted) {
+        List<Flight> flights;
+
+        if (includeDeleted != null && includeDeleted) {
+            flights = flightRepository.findAll();
+        } else {
+            flights = flightRepository.findByIsDeleted(false);
+        }
+
+        // Apply filters
+        if (originAirportCode != null && !originAirportCode.trim().isEmpty()) {
+            flights = flights.stream()
+                    .filter(f -> originAirportCode.equalsIgnoreCase(f.getOriginAirportCode()))
+                    .toList();
+        }
+
+        if (destinationAirportCode != null && !destinationAirportCode.trim().isEmpty()) {
+            flights = flights.stream()
+                    .filter(f -> destinationAirportCode.equalsIgnoreCase(f.getDestinationAirportCode()))
+                    .toList();
+        }
+
+        if (airlineId != null && !airlineId.trim().isEmpty()) {
+            flights = flights.stream()
+                    .filter(f -> airlineId.equalsIgnoreCase(f.getAirlineId()))
+                    .toList();
+        }
+
+        if (status != null) {
+            flights = flights.stream()
+                    .filter(f -> status.equals(f.getStatus()))
+                    .toList();
+        }
+
+        // Sort by departure time ascending
+        flights = flights.stream()
+                .sorted((f1, f2) -> f1.getDepartureTime().compareTo(f2.getDepartureTime()))
+                .toList();
+
+        return flights.stream()
+                .map(this::convertToFlightResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public FlightResponseDTO getFlightDetail(String id) {
+        Flight flight = flightRepository.findById(id).orElse(null);
+        if (flight == null) {
+            return null;
+        }
+        return convertToFlightDetailResponseDTO(flight);
+    }
+
+    @Override
     @Transactional
     public FlightResponseDTO updateFlight(UpdateFlightRequestDTO dto) {
         Flight flight = flightRepository.findById(dto.getId()).orElse(null);
@@ -250,6 +305,33 @@ public class FlightRestServiceImpl implements FlightRestService {
     private FlightResponseDTO convertToFlightResponseDTO(Flight flight) {
         // Get class flights for this flight
         List<ClassFlightResponseDTO> classFlights = classFlightRestService.getClassFlightsByFlight(flight.getId());
+
+        return FlightResponseDTO.builder()
+                .id(flight.getId())
+                .airlineId(flight.getAirlineId())
+                .airplaneId(flight.getAirplaneId())
+                .originAirportCode(flight.getOriginAirportCode())
+                .destinationAirportCode(flight.getDestinationAirportCode())
+                .departureTime(flight.getDepartureTime())
+                .arrivalTime(flight.getArrivalTime())
+                .terminal(flight.getTerminal())
+                .gate(flight.getGate())
+                .baggageAllowance(flight.getBaggageAllowance())
+                .facilities(flight.getFacilities())
+                .status(flight.getStatus())
+                .createdAt(flight.getCreatedAt())
+                .updatedAt(flight.getUpdatedAt())
+                .isDeleted(flight.getIsDeleted())
+                .classes(classFlights)
+                .build();
+    }
+
+    private FlightResponseDTO convertToFlightDetailResponseDTO(Flight flight) {
+        // Get class flights with seats for this flight (detailed view)
+        List<ClassFlightResponseDTO> classFlights = classFlightRestService.getClassFlightsByFlight(flight.getId())
+                .stream()
+                .map(cf -> classFlightRestService.getClassFlightDetail(cf.getId()))
+                .toList();
 
         return FlightResponseDTO.builder()
                 .id(flight.getId())
