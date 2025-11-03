@@ -16,9 +16,6 @@ public class UpdateAirplaneRequestDTO {
     @NotBlank(message = "ID cannot be blank")
     private String id;
 
-    @NotBlank(message = "Airline ID cannot be blank")
-    private String airlineId;
-
     @NotBlank(message = "Model cannot be blank")
     private String model;
 

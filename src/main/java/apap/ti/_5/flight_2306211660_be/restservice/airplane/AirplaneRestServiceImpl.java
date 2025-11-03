@@ -105,7 +105,6 @@ public class AirplaneRestServiceImpl implements AirplaneRestService {
         }
 
         airplane = airplane.toBuilder()
-                .airlineId(dto.getAirlineId())
                 .model(dto.getModel())
                 .seatCapacity(dto.getSeatCapacity())
                 .manufactureYear(dto.getManufactureYear())
