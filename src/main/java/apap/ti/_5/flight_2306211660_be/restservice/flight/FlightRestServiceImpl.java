@@ -237,33 +237,21 @@ public class FlightRestServiceImpl implements FlightRestService {
             throw new IllegalArgumentException("Airplane is already scheduled for overlapping flights");
         }
 
-        // Update flight
-        flight = flight.toBuilder()
-                .departureTime(dto.getDepartureTime())
-                .arrivalTime(dto.getArrivalTime())
-                .terminal(dto.getTerminal())
-                .gate(dto.getGate())
-                .baggageAllowance(dto.getBaggageAllowance())
-                .facilities(dto.getFacilities())
-                .build();
-
-        // Store original departure time for delayed check
+        // Capture original departure before applying changes
         LocalDateTime originalDepartureTime = flight.getDepartureTime();
 
-        System.out.println("Flight " + flight.getId() + " - Original departure: " + originalDepartureTime + ", New departure: " + dto.getDepartureTime());
-        System.out.println("Is new time after original? " + dto.getDepartureTime().isAfter(originalDepartureTime));
-
-        // Debug: Check if times are equal
-        System.out.println("Are times equal? " + dto.getDepartureTime().equals(originalDepartureTime));
-        System.out.println("Original time hash: " + originalDepartureTime.hashCode() + ", New time hash: " + dto.getDepartureTime().hashCode());
-
-        // Update flight fields
+        // Apply updates
         flight.setDepartureTime(dto.getDepartureTime());
         flight.setArrivalTime(dto.getArrivalTime());
         flight.setTerminal(dto.getTerminal());
         flight.setGate(dto.getGate());
         flight.setBaggageAllowance(dto.getBaggageAllowance());
         flight.setFacilities(dto.getFacilities());
+
+        // Debug info after applying updates (original captured above)
+        System.out.println("Flight " + flight.getId() + " - Original departure: " + originalDepartureTime + ", New departure: " + dto.getDepartureTime());
+        System.out.println("Is new time after original? " + dto.getDepartureTime().isAfter(originalDepartureTime));
+        System.out.println("Are times equal? " + dto.getDepartureTime().equals(originalDepartureTime));
 
         // Check if status should change to Delayed (only if departure time was moved later)
         if (dto.getDepartureTime().isAfter(originalDepartureTime)) {
