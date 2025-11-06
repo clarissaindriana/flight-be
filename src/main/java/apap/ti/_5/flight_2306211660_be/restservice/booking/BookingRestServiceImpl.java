@@ -57,9 +57,10 @@ public class BookingRestServiceImpl implements BookingRestService {
             throw new IllegalArgumentException("Flight not found or not active");
         }
 
-        // Check flight status (only allow booking for Scheduled flights)
-        if (flight.getStatus() != 1) { // 1 = Scheduled
-            throw new IllegalArgumentException("Cannot book flight that is not scheduled");
+        // Check flight status
+        // Allow booking for Scheduled (1) and Delayed (4). Disallow others (e.g., In Flight (2), Finished (3), Cancelled (5)).
+        if (flight.getStatus() != 1 && flight.getStatus() != 4) {
+            throw new IllegalArgumentException("Cannot book flight that is not scheduled or delayed");
         }
 
         // Validate class flight exists

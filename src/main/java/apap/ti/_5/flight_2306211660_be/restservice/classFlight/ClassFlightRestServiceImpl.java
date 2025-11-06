@@ -1,5 +1,6 @@
 package apap.ti._5.flight_2306211660_be.restservice.classFlight;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -7,9 +8,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import apap.ti._5.flight_2306211660_be.model.ClassFlight;
+import apap.ti._5.flight_2306211660_be.model.Seat;
 import apap.ti._5.flight_2306211660_be.repository.ClassFlightRepository;
+import apap.ti._5.flight_2306211660_be.repository.SeatRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.classFlight.AddClassFlightRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.classFlight.UpdateClassFlightRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.seat.AddSeatRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.classFlight.ClassFlightResponseDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.seat.SeatResponseDTO;
 import apap.ti._5.flight_2306211660_be.restservice.seat.SeatRestService;
@@ -22,6 +26,9 @@ public class ClassFlightRestServiceImpl implements ClassFlightRestService {
 
     @Autowired
     private SeatRestService seatRestService;
+
+    @Autowired
+    private SeatRepository seatRepository;
 
     @Override
     public ClassFlightResponseDTO createClassFlight(AddClassFlightRequestDTO dto) {
@@ -79,9 +86,63 @@ public class ClassFlightRestServiceImpl implements ClassFlightRestService {
 
         if (classFlight == null) return null;
 
+        int oldCap = classFlight.getSeatCapacity();
+        int newCap = dto.getSeatCapacity();
+
+        // Fetch existing seats for this class flight
+        final Integer classFlightId = classFlight.getId();
+        List<Seat> existingSeats = seatRepository.findAll().stream()
+                .filter(seat -> seat.getClassFlightId().equals(classFlightId))
+                .sorted(Comparator.comparing(Seat::getSeatCode))
+                .toList();
+
+        if (newCap > oldCap) {
+            // Add new seats with sequential codes
+            String classType = classFlight.getClassType() == null ? "" : classFlight.getClassType().toLowerCase();
+            String prefix;
+            switch (classType) {
+                case "economy": prefix = "EC"; break;
+                case "business": prefix = "BU"; break;
+                case "first": prefix = "FI"; break;
+                default: prefix = "EC"; break;
+            }
+            for (int i = oldCap + 1; i <= newCap; i++) {
+                String code = String.format("%s%03d", prefix, i);
+                AddSeatRequestDTO seatDto = AddSeatRequestDTO.builder()
+                        .classFlightId(classFlight.getId())
+                        .seatCode(code)
+                        .build();
+                seatRestService.createSeat(seatDto);
+            }
+        } else if (newCap < oldCap) {
+            // Determine seats to remove: the highest-numbered seats
+            int seatsToRemove = oldCap - newCap;
+            List<Seat> candidates = existingSeats.stream()
+                    .sorted(Comparator.comparing(Seat::getSeatCode).reversed())
+                    .limit(seatsToRemove)
+                    .toList();
+
+            // Ensure all candidates are not booked
+            boolean anyBooked = candidates.stream().anyMatch(Seat::getIsBooked);
+            if (anyBooked) {
+                throw new IllegalStateException("Cannot decrease seat capacity: some seats to be removed are already booked");
+            }
+
+            // Delete seats
+            for (Seat s : candidates) {
+                seatRepository.delete(s);
+            }
+        }
+
+        // Recalculate available seats after adjustments
+        List<Seat> seatsAfter = seatRepository.findAll().stream()
+                .filter(seat -> seat.getClassFlightId().equals(classFlightId))
+                .toList();
+        int availableSeats = (int) seatsAfter.stream().filter(seat -> !Boolean.TRUE.equals(seat.getIsBooked())).count();
+
         classFlight = classFlight.toBuilder()
-                .seatCapacity(dto.getSeatCapacity())
-                .availableSeats(dto.getSeatCapacity()) // Reset available seats
+                .seatCapacity(newCap)
+                .availableSeats(availableSeats)
                 .price(dto.getPrice())
                 .build();
 

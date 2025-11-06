@@ -1,5 +1,6 @@
 package apap.ti._5.flight_2306211660_be.restservice.seat;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -44,11 +45,11 @@ public class SeatRestServiceImpl implements SeatRestService {
 
     @Override
     public List<SeatResponseDTO> getSeatsByClassFlight(Integer classFlightId) {
-        // This would need a custom query in the repository
-        // For now, we'll filter in memory
+        // Filter in memory and return in stable, sorted order by seat code
         List<Seat> seats = seatRepository.findAll();
         return seats.stream()
                 .filter(seat -> classFlightId.equals(seat.getClassFlightId()))
+                .sorted(Comparator.comparing(Seat::getSeatCode))
                 .map(this::convertToSeatResponseDTO)
                 .collect(Collectors.toList());
     }
@@ -101,6 +102,7 @@ public class SeatRestServiceImpl implements SeatRestService {
 
         List<Seat> seats = seatRepository.findAll().stream()
                 .filter(seat -> classFlightIds.contains(seat.getClassFlightId()))
+                .sorted(Comparator.comparing(Seat::getSeatCode))
                 .toList();
 
         return seats.stream()
