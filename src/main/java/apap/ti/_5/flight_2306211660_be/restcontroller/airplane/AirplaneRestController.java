@@ -28,8 +28,9 @@ public class AirplaneRestController {
     public static final String CREATE_AIRPLANE = BASE_URL + "/create";
     public static final String UPDATE_AIRPLANE = BASE_URL + "/update";
     public static final String DELETE_AIRPLANE = BASE_URL + "/{id}/delete";
+    public static final String ACTIVATE_AIRPLANE = BASE_URL + "/{id}/activate";
 
-    @GetMapping(VIEW_ALL_AIRPLANES)
+    @GetMapping({VIEW_ALL_AIRPLANES, "/airplanes/all"})
     public ResponseEntity<BaseResponseDTO<List<AirplaneResponseDTO>>> getAllAirplanes(
             @RequestParam(required = false) Boolean isDeleted,
             @RequestParam(required = false) String search,
@@ -49,11 +50,15 @@ public class AirplaneRestController {
                         .toList();
             }
 
-            // TODO: HARUS BISA SEARCH BY ID, MODEL, OR AIRLINE
-            // Filter by search (name)
+            // Filter by search (id, model, or airlineId) - case-insensitive
             if (search != null && !search.trim().isEmpty()) {
+                String q = search.toLowerCase().trim();
                 airplanes = airplanes.stream()
-                        .filter(airplane -> airplane.getId().toLowerCase().contains(search.toLowerCase()))
+                        .filter(airplane ->
+                                (airplane.getId() != null && airplane.getId().toLowerCase().contains(q)) ||
+                                (airplane.getModel() != null && airplane.getModel().toLowerCase().contains(q)) ||
+                                (airplane.getAirlineId() != null && airplane.getAirlineId().toLowerCase().contains(q))
+                        )
                         .toList();
             }
 
@@ -226,6 +231,40 @@ public class AirplaneRestController {
             baseResponseDTO.setStatus(HttpStatus.OK.value());
             baseResponseDTO.setData(airplane);
             baseResponseDTO.setMessage("Data Airplane Berhasil Dihapus");
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
+
+        } catch (IllegalStateException ex) {
+            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
+            baseResponseDTO.setMessage(ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
+        } catch (Exception ex) {
+            baseResponseDTO.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            baseResponseDTO.setMessage("Terjadi kesalahan pada server: " + ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @PostMapping(ACTIVATE_AIRPLANE)
+    public ResponseEntity<BaseResponseDTO<AirplaneResponseDTO>> activateAirplane(
+            @PathVariable String id) {
+        var baseResponseDTO = new BaseResponseDTO<AirplaneResponseDTO>();
+
+        try {
+            AirplaneResponseDTO airplane = airplaneRestService.activateAirplane(id);
+
+            if (airplane == null) {
+                baseResponseDTO.setStatus(HttpStatus.NOT_FOUND.value());
+                baseResponseDTO.setMessage("Airplane Tidak Ditemukan");
+                baseResponseDTO.setTimestamp(new Date());
+                return new ResponseEntity<>(baseResponseDTO, HttpStatus.NOT_FOUND);
+            }
+
+            baseResponseDTO.setStatus(HttpStatus.OK.value());
+            baseResponseDTO.setData(airplane);
+            baseResponseDTO.setMessage("Data Airplane Berhasil Diaktifkan");
             baseResponseDTO.setTimestamp(new Date());
             return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
 

@@ -30,10 +30,13 @@ public interface FlightRepository extends JpaRepository<Flight, String> {
 
     @Query("SELECT MAX(CAST(SUBSTRING(f.id, LENGTH(:airplaneId) + 2) AS int)) FROM Flight f WHERE f.id LIKE CONCAT(:airplaneId, '-%')")
     Integer findMaxFlightNumberByAirplaneId(@Param("airplaneId") String airplaneId);
-
+    
     List<Flight> findByAirlineIdAndIsDeleted(String airlineId, Boolean isDeleted);
-
+    
     List<Flight> findByIsDeleted(Boolean isDeleted);
-
+    
     List<Flight> findByAirplaneIdAndIsDeleted(String airplaneId, Boolean isDeleted);
+    
+    // For airplane deactivation validation: block if any non-deleted flight has status Scheduled(1), In Flight(2), or Delayed(4)
+    List<Flight> findByAirplaneIdAndIsDeletedAndStatusIn(String airplaneId, Boolean isDeleted, List<Integer> statuses);
 }

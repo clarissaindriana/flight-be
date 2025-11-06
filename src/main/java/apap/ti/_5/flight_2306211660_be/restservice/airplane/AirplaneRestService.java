@@ -13,4 +13,5 @@ public interface AirplaneRestService {
     AirplaneResponseDTO getAirplane(String id);
     AirplaneResponseDTO updateAirplane(UpdateAirplaneRequestDTO dto);
     AirplaneResponseDTO deleteAirplane(String id);
+    AirplaneResponseDTO activateAirplane(String id);
 }

@@ -125,13 +125,33 @@ public class AirplaneRestServiceImpl implements AirplaneRestService {
             throw new IllegalStateException("Airplane is already deleted");
         }
 
-        // Check if airplane is used in active flights
-        List<Flight> activeFlights = flightRepository.findByAirplaneIdAndIsDeleted(id, false);
-        if (!activeFlights.isEmpty()) {
-            throw new IllegalStateException("Cannot delete airplane that is used in active flights");
+        // Constraint check:
+        // Block deactivation if any non-deleted flight exists with status Scheduled(1), In Flight(2), or Delayed(4)
+        List<Integer> blockedStatuses = List.of(1, 2, 4);
+        List<Flight> conflictingFlights =
+                flightRepository.findByAirplaneIdAndIsDeletedAndStatusIn(id, false, blockedStatuses);
+        if (!conflictingFlights.isEmpty()) {
+            throw new IllegalStateException("Pesawat tidak dapat dinonaktifkan karena masih digunakan pada penerbangan dengan status Scheduled, In Flight, atau Delayed");
         }
 
+        // Soft delete (mark as inactive)
         airplane.setIsDeleted(true);
+        return convertToAirplaneResponseDTO(airplaneRepository.save(airplane));
+    }
+
+    @Override
+    public AirplaneResponseDTO activateAirplane(String id) {
+        Airplane airplane = airplaneRepository.findById(id).orElse(null);
+        if (airplane == null) {
+            return null;
+        }
+
+        // If already active, block redundant activation
+        if (!airplane.getIsDeleted()) {
+            throw new IllegalStateException("Airplane is already active");
+        }
+
+        airplane.setIsDeleted(false);
         return convertToAirplaneResponseDTO(airplaneRepository.save(airplane));
     }
 

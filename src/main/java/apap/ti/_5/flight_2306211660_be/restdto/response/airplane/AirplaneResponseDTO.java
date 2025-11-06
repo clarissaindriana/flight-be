@@ -1,6 +1,7 @@
 package apap.ti._5.flight_2306211660_be.restdto.response.airplane;
 
 import java.time.LocalDateTime;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import apap.ti._5.flight_2306211660_be.restdto.response.airline.AirlineResponseDTO;
 import lombok.AllArgsConstructor;
@@ -21,5 +22,6 @@ public class AirplaneResponseDTO {
     private Integer manufactureYear;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    @JsonProperty("isDeleted")
     private boolean isDeleted = false;
 }
