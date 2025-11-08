@@ -53,8 +53,6 @@ public class ClassFlightRestServiceImpl implements ClassFlightRestService {
 
     @Override
     public List<ClassFlightResponseDTO> getClassFlightsByFlight(String flightId) {
-        // This would need a custom query in the repository
-        // For now, we'll filter in memory
         List<ClassFlight> classFlights = classFlightRepository.findAll();
         return classFlights.stream()
                 .filter(cf -> flightId.equals(cf.getFlightId()))

@@ -297,8 +297,6 @@ public class FlightRestServiceImpl implements FlightRestService {
 
         // Update classes if provided
         if (dto.getClasses() != null && !dto.getClasses().isEmpty()) {
-            // This would be more complex in a real implementation
-            // For now, we'll skip updating classes as per the requirements focus
         }
 
         return convertToFlightResponseDTO(flight);

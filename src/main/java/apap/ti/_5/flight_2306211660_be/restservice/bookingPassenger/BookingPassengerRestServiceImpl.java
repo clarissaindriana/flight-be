@@ -43,8 +43,6 @@ public class BookingPassengerRestServiceImpl implements BookingPassengerRestServ
 
     @Override
     public List<BookingPassengerResponseDTO> getBookingPassengersByBooking(String bookingId) {
-        // This would require a custom query method in the repository
-        // For now, we'll filter from all results
         return getAllBookingPassengers().stream()
                 .filter(bp -> bp.getBookingId().equals(bookingId))
                 .collect(Collectors.toList());
@@ -52,8 +50,6 @@ public class BookingPassengerRestServiceImpl implements BookingPassengerRestServ
 
     @Override
     public List<BookingPassengerResponseDTO> getBookingPassengersByPassenger(UUID passengerId) {
-        // This would require a custom query method in the repository
-        // For now, we'll filter from all results
         return getAllBookingPassengers().stream()
                 .filter(bp -> bp.getPassengerId().equals(passengerId))
                 .collect(Collectors.toList());
@@ -77,8 +73,6 @@ public class BookingPassengerRestServiceImpl implements BookingPassengerRestServ
             return null;
         }
 
-        // For this junction table, there's not much to update since it's just the relationship
-        // In a real scenario, you might have additional fields like seat assignments
         bookingPassenger = bookingPassengerRepository.save(bookingPassenger);
         return convertToBookingPassengerResponseDTO(bookingPassenger);
     }
