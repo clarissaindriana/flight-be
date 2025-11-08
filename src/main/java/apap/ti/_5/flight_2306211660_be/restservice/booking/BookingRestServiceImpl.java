@@ -175,6 +175,19 @@ public class BookingRestServiceImpl implements BookingRestService {
     }
 
     @Override
+    public List<BookingResponseDTO> getAllBookings(Boolean includeDeleted) {
+        List<Booking> bookings;
+        if (includeDeleted != null && includeDeleted) {
+            bookings = bookingRepository.findAll();
+        } else {
+            bookings = bookingRepository.findByIsDeleted(false);
+        }
+        return bookings.stream()
+                .map(this::convertToBookingResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public List<BookingResponseDTO> getBookingsByFlight(String flightId) {
         List<Booking> bookings = bookingRepository.findByFlightIdAndIsDeleted(flightId, false);
         return bookings.stream()
@@ -183,11 +196,27 @@ public class BookingRestServiceImpl implements BookingRestService {
     }
 
     @Override
+    public List<BookingResponseDTO> getBookingsByFlight(String flightId, Boolean includeDeleted) {
+        List<Booking> bookings;
+        if (includeDeleted != null && includeDeleted) {
+            bookings = bookingRepository.findAll().stream()
+                    .filter(b -> flightId.equals(b.getFlightId()))
+                    .collect(Collectors.toList());
+        } else {
+            bookings = bookingRepository.findByFlightIdAndIsDeleted(flightId, false);
+        }
+        return bookings.stream()
+                .map(this::convertToBookingResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
     public BookingResponseDTO getBooking(String id) {
         Booking booking = bookingRepository.findById(id).orElse(null);
-        if (booking == null || booking.getIsDeleted()) {
+        if (booking == null) {
             return null;
         }
+        // Return even if soft-deleted (FE must render read-only for isDeleted = TRUE)
         return convertToBookingResponseDTO(booking);
     }
 
@@ -199,9 +228,15 @@ public class BookingRestServiceImpl implements BookingRestService {
             return null;
         }
 
-        // Only allow updates for unpaid bookings
-        if (booking.getStatus() != 1) {
-            throw new IllegalStateException("Cannot update booking that is not unpaid");
+        // Only allow updates for Unpaid (1) or Paid (2)
+        if (booking.getStatus() != 1 && booking.getStatus() != 2) {
+            throw new IllegalStateException("Only unpaid or paid bookings can be updated");
+        }
+
+        // Validate related flight status: must be Scheduled (1) or Delayed (4)
+        Flight relatedFlight = flightRepository.findById(booking.getFlightId()).orElse(null);
+        if (relatedFlight == null || relatedFlight.getIsDeleted() || (relatedFlight.getStatus() != 1 && relatedFlight.getStatus() != 4)) {
+            throw new IllegalStateException("Cannot update booking because flight is not scheduled or delayed");
         }
 
         // Update contact information
@@ -212,16 +247,163 @@ public class BookingRestServiceImpl implements BookingRestService {
 
         booking = bookingRepository.save(booking);
 
-        // Update passengers if provided
-        if (dto.getPassengers() != null && !dto.getPassengers().isEmpty()) {
-            // This would be more complex - for now, we'll skip passenger updates
+        // Update passengers if provided (add/update/remove) and recompute counts and pricing
+        {
+            // Current relations
+            List<BookingPassenger> currentBps = bookingPassengerRepository.findByBookingId(dto.getId());
+
+            java.util.Set<java.util.UUID> keepIds = new java.util.HashSet<>();
+            if (dto.getPassengers() != null) {
+                for (apap.ti._5.flight_2306211660_be.restdto.request.passenger.UpdatePassengerRequestDTO upd : dto.getPassengers()) {
+                    Passenger p = passengerRepository.findById(upd.getId()).orElse(null);
+                    if (p == null) {
+                        throw new IllegalArgumentException("Passenger to update not found: " + upd.getId());
+                    }
+                    p = p.toBuilder()
+                            .fullName(upd.getFullName())
+                            .birthDate(upd.getBirthDate())
+                            .gender(upd.getGender())
+                            .idPassport(upd.getIdPassport())
+                            .build();
+                    passengerRepository.save(p);
+                    keepIds.add(upd.getId());
+                }
+            }
+
+            // Remove booking-passenger relations not in keepIds (only when passengers list provided)
+            if (dto.getPassengers() != null) {
+                for (BookingPassenger bp : currentBps) {
+                    if (!keepIds.contains(bp.getPassengerId())) {
+                        // Deallocate any seat tied to this passenger
+                        List<Seat> seatsOfPassenger = seatRepository.findAll().stream()
+                                .filter(s -> bp.getPassengerId().equals(s.getPassengerId()))
+                                .toList();
+                        for (Seat s : seatsOfPassenger) {
+                            s.setIsBooked(false);
+                            s.setPassengerId(null);
+                            seatRepository.save(s);
+                        }
+                        bookingPassengerRepository.delete(bp);
+                    }
+                }
+            }
+
+            // Add new passengers if provided
+            if (dto.getNewPassengers() != null && !dto.getNewPassengers().isEmpty()) {
+                for (AddPassengerRequestDTO addP : dto.getNewPassengers()) {
+                    Passenger passenger;
+                    if (passengerRepository.existsByIdPassport(addP.getIdPassport())) {
+                        passenger = passengerRepository.findByIdPassport(addP.getIdPassport());
+                    } else {
+                        passenger = Passenger.builder()
+                                .id(java.util.UUID.randomUUID())
+                                .fullName(addP.getFullName())
+                                .birthDate(addP.getBirthDate())
+                                .gender(addP.getGender())
+                                .idPassport(addP.getIdPassport())
+                                .build();
+                        passenger = passengerRepository.save(passenger);
+                    }
+
+                    BookingPassenger newBp = BookingPassenger.builder()
+                            .bookingId(booking.getId())
+                            .passengerId(passenger.getId())
+                            .build();
+                    bookingPassengerRepository.save(newBp);
+                }
+            }
+
+            // Recompute passenger count and adjust availability and pricing
+            int oldCount = booking.getPassengerCount();
+            int newCount = bookingPassengerRepository.findByBookingId(booking.getId()).size();
+            if (newCount != oldCount) {
+                ClassFlight cf = classFlightRepository.findById(booking.getClassFlightId()).orElse(null);
+                if (cf == null) throw new IllegalStateException("Class flight not found for booking");
+                int delta = newCount - oldCount;
+                if (delta > 0) {
+                    if (cf.getAvailableSeats() < delta) {
+                        throw new IllegalArgumentException("Not enough seats available for additional passengers");
+                    }
+                    cf.setAvailableSeats(cf.getAvailableSeats() - delta);
+                } else if (delta < 0) {
+                    cf.setAvailableSeats(cf.getAvailableSeats() + (-delta));
+                }
+                classFlightRepository.save(cf);
+                booking = booking.toBuilder()
+                        .passengerCount(newCount)
+                        .totalPrice(cf.getPrice().multiply(java.math.BigDecimal.valueOf(newCount)))
+                        .build();
+                booking = bookingRepository.save(booking);
+            } else {
+                // Keep pricing consistent with current class price
+                ClassFlight cf = classFlightRepository.findById(booking.getClassFlightId()).orElse(null);
+                if (cf != null) {
+                    booking = booking.toBuilder()
+                            .totalPrice(cf.getPrice().multiply(java.math.BigDecimal.valueOf(booking.getPassengerCount())))
+                            .build();
+                    booking = bookingRepository.save(booking);
+                }
+            }
         }
 
-        // Update seat allocations if provided
+        // Update seat allocations if provided, else ensure new passengers have seats
         if (dto.getSeatIds() != null && !dto.getSeatIds().isEmpty()) {
-            // Deallocate old seats and allocate new ones
+            // Validate provided seats length matches current passengerCount
+            if (dto.getSeatIds().size() != booking.getPassengerCount()) {
+                throw new IllegalArgumentException("Number of seat IDs must match current passenger count");
+            }
+
+            // Validate distinct seat IDs
+            java.util.Set<Integer> distinctSeatIds = new java.util.HashSet<>(dto.getSeatIds());
+            if (distinctSeatIds.size() != dto.getSeatIds().size()) {
+                throw new IllegalArgumentException("Duplicate seat IDs provided");
+            }
+
+            // Build current passenger id set for this booking (after add/remove above)
+            java.util.List<BookingPassenger> allBps = bookingPassengerRepository.findByBookingId(booking.getId());
+            java.util.Set<java.util.UUID> bpIds = allBps.stream()
+                    .map(BookingPassenger::getPassengerId)
+                    .collect(java.util.stream.Collectors.toSet());
+
+            // Validate each requested seat:
+            // - belongs to the same classFlight
+            // - either unbooked OR currently booked by a passenger of this booking (allow remap)
+            for (Integer seatId : dto.getSeatIds()) {
+                Seat seat = seatRepository.findById(seatId).orElse(null);
+                if (seat == null) {
+                    throw new IllegalArgumentException("Seat with ID " + seatId + " does not exist");
+                }
+                if (!seat.getClassFlightId().equals(booking.getClassFlightId())) {
+                    throw new IllegalArgumentException("Seat with ID " + seatId + " does not belong to the booking's class flight");
+                }
+                if (Boolean.TRUE.equals(seat.getIsBooked())) {
+                    if (seat.getPassengerId() == null || !bpIds.contains(seat.getPassengerId())) {
+                        throw new IllegalArgumentException("Seat with ID " + seatId + " is already booked");
+                    }
+                }
+            }
+
+            // Deallocate old seats and allocate new ones (preserve passenger mapping order)
             deallocateSeats(dto.getId());
-            allocateSeats(dto.getId(), dto.getSeatIds());
+            allocateSeatsToPassengers(dto.getId(), dto.getSeatIds());
+        } else {
+            // If passenger count increased or some passengers have no seats, allocate missing seats automatically
+            java.util.List<BookingPassenger> allBps = bookingPassengerRepository.findByBookingId(booking.getId());
+            java.util.Set<java.util.UUID> bpIds = allBps.stream()
+                    .map(BookingPassenger::getPassengerId)
+                    .collect(java.util.stream.Collectors.toSet());
+
+            final Integer classFlightIdForFilter = booking.getClassFlightId();
+            long bookedSeatsForBooking = seatRepository.findAll().stream()
+                    .filter(s -> s.getClassFlightId().equals(classFlightIdForFilter)
+                            && s.getPassengerId() != null
+                            && bpIds.contains(s.getPassengerId()))
+                    .count();
+
+            int missing = booking.getPassengerCount() - (int) bookedSeatsForBooking;
+            if (missing > 0) {
+                allocateSeats(booking.getId(), missing, booking.getClassFlightId());
+            }
         }
 
         return convertToBookingResponseDTO(booking);
@@ -239,10 +421,17 @@ public class BookingRestServiceImpl implements BookingRestService {
             throw new IllegalStateException("Booking is already deleted");
         }
 
-        // Only allow deletion for unpaid bookings
-        if (booking.getStatus() != 1) {
-            throw new IllegalStateException("Cannot delete booking that is paid or cancelled");
+        // Only allow cancel for Unpaid (1) or Paid (2)
+        if (booking.getStatus() != 1 && booking.getStatus() != 2) {
+            throw new IllegalStateException("Only unpaid or paid bookings can be cancelled");
         }
+
+        // Validate related flight status: must be Scheduled (1) or Delayed (4)
+        Flight relatedFlight = flightRepository.findById(booking.getFlightId()).orElse(null);
+        if (relatedFlight == null || (relatedFlight.getStatus() != 1 && relatedFlight.getStatus() != 4)) {
+            throw new IllegalStateException("Cannot cancel booking because flight is not scheduled or delayed");
+        }
+        // TODO: refund handling for Paid status (booking.status == 2)
 
         // Deallocate seats
         deallocateSeats(id);
@@ -284,15 +473,22 @@ public class BookingRestServiceImpl implements BookingRestService {
     }
 
     private void allocateSeats(String bookingId, Integer passengerCount, Integer classFlightId) {
-        // Find available seats in the class flight
+        // Find available seats in the class flight (stable order)
         List<Seat> availableSeats = seatRepository.findAll().stream()
                 .filter(seat -> seat.getClassFlightId().equals(classFlightId) && !seat.getIsBooked())
+                .sorted(java.util.Comparator.comparing(Seat::getSeatCode))
                 .limit(passengerCount)
                 .toList();
 
-        // Mark seats as booked
-        for (Seat seat : availableSeats) {
+        // Map seats to passengers in deterministic order for this booking
+        List<BookingPassenger> bookingPassengers = bookingPassengerRepository.findByBookingId(bookingId);
+
+        for (int i = 0; i < availableSeats.size(); i++) {
+            Seat seat = availableSeats.get(i);
             seat.setIsBooked(true);
+            if (i < bookingPassengers.size()) {
+                seat.setPassengerId(bookingPassengers.get(i).getPassengerId());
+            }
             seatRepository.save(seat);
         }
     }
@@ -337,10 +533,19 @@ public class BookingRestServiceImpl implements BookingRestService {
         // Get passengers for this booking through BookingPassenger junction table
         List<PassengerResponseDTO> passengers = getPassengersForBooking(booking.getId());
 
+        // Resolve class type for readability
+        ClassFlight cf = classFlightRepository.findById(booking.getClassFlightId()).orElse(null);
+        String classType = (cf != null) ? cf.getClassType() : null;
+
+        // Build seat assignments for booking detail display
+        List<apap.ti._5.flight_2306211660_be.restdto.response.booking.PassengerSeatAssignmentResponseDTO> seatAssignments =
+                getSeatAssignmentsForBooking(booking.getId(), booking.getClassFlightId());
+
         return BookingResponseDTO.builder()
                 .id(booking.getId())
                 .flightId(booking.getFlightId())
                 .classFlightId(booking.getClassFlightId())
+                .classType(classType)
                 .contactEmail(booking.getContactEmail())
                 .contactPhone(booking.getContactPhone())
                 .passengerCount(booking.getPassengerCount())
@@ -350,6 +555,7 @@ public class BookingRestServiceImpl implements BookingRestService {
                 .updatedAt(booking.getUpdatedAt())
                 .isDeleted(booking.getIsDeleted())
                 .passengers(passengers)
+                .seatAssignments(seatAssignments)
                 .build();
     }
 
@@ -371,6 +577,29 @@ public class BookingRestServiceImpl implements BookingRestService {
                                 .createdAt(passenger.getCreatedAt())
                                 .updatedAt(passenger.getUpdatedAt())
                                 .build();
+                    }
+                    return null;
+                })
+                .filter(java.util.Objects::nonNull)
+                .collect(java.util.stream.Collectors.toList());
+    }
+
+    private List<apap.ti._5.flight_2306211660_be.restdto.response.booking.PassengerSeatAssignmentResponseDTO> getSeatAssignmentsForBooking(String bookingId, Integer classFlightId) {
+        List<BookingPassenger> bookingPassengers = bookingPassengerRepository.findByBookingId(bookingId);
+        List<Seat> seats = seatRepository.findAll().stream()
+                .filter(seat -> seat.getClassFlightId().equals(classFlightId) && seat.getIsBooked() && seat.getPassengerId() != null)
+                .toList();
+
+        return bookingPassengers.stream()
+                .map(bp -> {
+                    var seatOpt = seats.stream()
+                            .filter(s -> bp.getPassengerId().equals(s.getPassengerId()))
+                            .findFirst();
+                    if (seatOpt.isPresent()) {
+                        Seat s = seatOpt.get();
+                        return new apap.ti._5.flight_2306211660_be.restdto.response.booking.PassengerSeatAssignmentResponseDTO(
+                                bp.getPassengerId(), s.getId(), s.getSeatCode()
+                        );
                     }
                     return null;
                 })

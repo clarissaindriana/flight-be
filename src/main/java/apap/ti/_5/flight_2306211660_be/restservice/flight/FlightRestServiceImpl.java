@@ -8,10 +8,20 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import apap.ti._5.flight_2306211660_be.model.Airline;
 import apap.ti._5.flight_2306211660_be.model.Airplane;
+import apap.ti._5.flight_2306211660_be.model.Booking;
+import apap.ti._5.flight_2306211660_be.model.BookingPassenger;
+import apap.ti._5.flight_2306211660_be.model.ClassFlight;
 import apap.ti._5.flight_2306211660_be.model.Flight;
+import apap.ti._5.flight_2306211660_be.model.Seat;
+import apap.ti._5.flight_2306211660_be.repository.AirlineRepository;
 import apap.ti._5.flight_2306211660_be.repository.AirplaneRepository;
+import apap.ti._5.flight_2306211660_be.repository.BookingPassengerRepository;
+import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
+import apap.ti._5.flight_2306211660_be.repository.ClassFlightRepository;
 import apap.ti._5.flight_2306211660_be.repository.FlightRepository;
+import apap.ti._5.flight_2306211660_be.repository.SeatRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.classFlight.AddClassFlightRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.flight.AddFlightRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.flight.UpdateFlightRequestDTO;
@@ -36,6 +46,21 @@ public class FlightRestServiceImpl implements FlightRestService {
     @Autowired
     private SeatRestService seatRestService;
 
+    @Autowired
+    private BookingRepository bookingRepository;
+
+    @Autowired
+    private BookingPassengerRepository bookingPassengerRepository;
+
+    @Autowired
+    private SeatRepository seatRepository;
+
+    @Autowired
+    private ClassFlightRepository classFlightRepository;
+
+    @Autowired
+    private AirlineRepository airlineRepository;
+
     @Override
     @Transactional
     public FlightResponseDTO createFlight(AddFlightRequestDTO dto) {
@@ -53,6 +78,12 @@ public class FlightRestServiceImpl implements FlightRestService {
         Airplane airplane = airplaneRepository.findActiveById(dto.getAirplaneId());
         if (airplane == null) {
             throw new IllegalArgumentException("Airplane not found or not active");
+        }
+
+        // Check if airline exists and is active
+        Airline airline = airlineRepository.findById(dto.getAirlineId()).orElse(null);
+        if (airline == null) {
+            throw new IllegalArgumentException("Airline not found or not active");
         }
 
         // Check total seat capacity
@@ -290,8 +321,37 @@ public class FlightRestServiceImpl implements FlightRestService {
             throw new IllegalStateException("Cannot delete flight that is in flight or finished");
         }
 
-        // TODO: Check for active bookings when booking is implemented
-        // For now, assume no bookings
+        // Auto-cancel all active bookings (Unpaid/Paid) for this flight
+        List<Booking> activeBookings = bookingRepository.findActiveBookingsByFlightId(id);
+        for (Booking b : activeBookings) {
+            // Deallocate seats assigned to passengers of this booking
+            var bps = bookingPassengerRepository.findByBookingId(b.getId());
+            var passengerIds = bps.stream().map(BookingPassenger::getPassengerId).toList();
+
+            List<Seat> seats = seatRepository.findAll().stream()
+                    .filter(s -> s.getClassFlightId().equals(b.getClassFlightId())
+                            && s.getPassengerId() != null
+                            && passengerIds.contains(s.getPassengerId()))
+                    .toList();
+
+            for (Seat s : seats) {
+                s.setIsBooked(false);
+                s.setPassengerId(null);
+                seatRepository.save(s);
+            }
+
+            // Restore available seats for the class
+            ClassFlight cf = classFlightRepository.findById(b.getClassFlightId()).orElse(null);
+            if (cf != null) {
+                cf.setAvailableSeats(cf.getAvailableSeats() + b.getPassengerCount());
+                classFlightRepository.save(cf);
+            }
+
+            // Soft-delete booking and set status Cancelled
+            b.setIsDeleted(true);
+            b.setStatus(3);
+            bookingRepository.save(b);
+        }
 
         flight.setIsDeleted(true);
         flight.setStatus(5); // Cancelled

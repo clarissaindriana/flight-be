@@ -5,22 +5,34 @@ import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequest
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingResponseDTO;
 
+import apap.ti._5.flight_2306211660_be.model.Booking;
+import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
 import apap.ti._5.flight_2306211660_be.restservice.booking.BookingRestService;
 import jakarta.validation.Valid;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Comparator;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.*;
-import java.util.Date;
-import java.util.List;
 
 @RestController
 @RequestMapping("/api")
 public class BookingRestController {
     @Autowired
     private BookingRestService bookingRestService;
+
+    @Autowired
+    private BookingRepository bookingRepository;
 
     public static final String BASE_URL = "/booking";
     public static final String VIEW_BOOKING = BASE_URL + "/{id}";
@@ -30,15 +42,17 @@ public class BookingRestController {
 
     @GetMapping(BASE_URL)
     public ResponseEntity<BaseResponseDTO<List<BookingResponseDTO>>> getAllBookings(
-            @RequestParam(required = false) String flightId) {
+            @RequestParam(required = false) String flightId,
+            @RequestParam(required = false) Boolean includeDeleted) {
         var baseResponseDTO = new BaseResponseDTO<List<BookingResponseDTO>>();
 
         List<BookingResponseDTO> bookings;
 
         if (flightId != null) {
-            bookings = bookingRestService.getBookingsByFlight(flightId);
+            bookings = bookingRestService.getBookingsByFlight(flightId, includeDeleted);
         } else {
-            bookings = bookingRestService.getAllBookings();
+            // Default: show active only when includeDeleted is null/false; include archives when true
+            bookings = bookingRestService.getAllBookings(includeDeleted);
         }
 
         baseResponseDTO.setStatus(HttpStatus.OK.value());
@@ -156,6 +170,60 @@ public class BookingRestController {
             baseResponseDTO.setMessage("Terjadi kesalahan pada server: " + ex.getMessage());
             baseResponseDTO.setTimestamp(new Date());
             return new ResponseEntity<>(baseResponseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+        
+    }
+    
+    // GET /api/booking/statistics?start=YYYY-MM-DD&end=YYYY-MM-DD
+    @GetMapping(BASE_URL + "/statistics")
+    public ResponseEntity<BaseResponseDTO<List<Map<String, Object>>>> getBookingStatistics(
+            @RequestParam String start,
+            @RequestParam String end) {
+        var baseResponseDTO = new BaseResponseDTO<List<Map<String, Object>>>();
+        try {
+            LocalDate startDate = LocalDate.parse(start);
+            LocalDate endDate = LocalDate.parse(end);
+            LocalDateTime startDt = startDate.atStartOfDay();
+            LocalDateTime endDt = endDate.atTime(23, 59, 59);
+
+            // Filter only Unpaid(1) and Paid(2), not soft-deleted, within period by createdAt
+            List<Booking> filtered = bookingRepository.findAll().stream()
+                    .filter(b -> b.getIsDeleted() != null && !b.getIsDeleted())
+                    .filter(b -> b.getStatus() != null && (b.getStatus() == 1 || b.getStatus() == 2))
+                    .filter(b -> {
+                        LocalDateTime c = b.getCreatedAt();
+                        return c != null && !c.isBefore(startDt) && !c.isAfter(endDt);
+                    })
+                    .collect(Collectors.toList());
+
+            // Group by flightId and compute bookingCount + totalRevenue
+            List<Map<String, Object>> stats = filtered.stream()
+                    .collect(Collectors.groupingBy(Booking::getFlightId))
+                    .entrySet().stream()
+                    .map(e -> {
+                        Map<String, Object> m = new HashMap<>();
+                        m.put("flightId", e.getKey());
+                        m.put("bookingCount", e.getValue().size());
+                        BigDecimal totalRevenue = e.getValue().stream()
+                                .map(Booking::getTotalPrice)
+                                .filter(v -> v != null)
+                                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                        m.put("totalRevenue", totalRevenue);
+                        return m;
+                    })
+                    .sorted(Comparator.comparing(m -> (String) m.get("flightId")))
+                    .collect(Collectors.toList());
+
+            baseResponseDTO.setStatus(HttpStatus.OK.value());
+            baseResponseDTO.setData(stats);
+            baseResponseDTO.setMessage("Booking statistics calculated successfully");
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
+        } catch (Exception ex) {
+            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
+            baseResponseDTO.setMessage("Invalid request: " + ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
         }
     }
 

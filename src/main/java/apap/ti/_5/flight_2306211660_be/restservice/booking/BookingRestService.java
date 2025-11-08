@@ -10,9 +10,17 @@ public interface BookingRestService {
 
     BookingResponseDTO createBooking(AddBookingRequestDTO dto);
 
+    // Existing default (active only)
     List<BookingResponseDTO> getAllBookings();
 
+    // New: includeDeleted toggle
+    List<BookingResponseDTO> getAllBookings(Boolean includeDeleted);
+
+    // Existing default (active only)
     List<BookingResponseDTO> getBookingsByFlight(String flightId);
+
+    // New: includeDeleted toggle
+    List<BookingResponseDTO> getBookingsByFlight(String flightId, Boolean includeDeleted);
 
     BookingResponseDTO getBooking(String id);
 

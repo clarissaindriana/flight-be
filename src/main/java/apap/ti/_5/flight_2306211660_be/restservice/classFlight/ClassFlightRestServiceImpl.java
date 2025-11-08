@@ -96,6 +96,14 @@ public class ClassFlightRestServiceImpl implements ClassFlightRestService {
                 .sorted(Comparator.comparing(Seat::getSeatCode))
                 .toList();
 
+        // Validation: new capacity cannot be less than currently booked seats
+        long bookedCount = existingSeats.stream()
+                .filter(s -> Boolean.TRUE.equals(s.getIsBooked()))
+                .count();
+        if (newCap < bookedCount) {
+            throw new IllegalStateException("Cannot set seat capacity below currently booked seats (" + bookedCount + ")");
+        }
+
         if (newCap > oldCap) {
             // Add new seats with sequential codes
             String classType = classFlight.getClassType() == null ? "" : classFlight.getClassType().toLowerCase();
@@ -115,21 +123,21 @@ public class ClassFlightRestServiceImpl implements ClassFlightRestService {
                 seatRestService.createSeat(seatDto);
             }
         } else if (newCap < oldCap) {
-            // Determine seats to remove: the highest-numbered seats
+            // Determine seats to remove: choose highest-numbered UNBOOKED seats only
             int seatsToRemove = oldCap - newCap;
-            List<Seat> candidates = existingSeats.stream()
+
+            List<Seat> removable = existingSeats.stream()
+                    .filter(s -> !Boolean.TRUE.equals(s.getIsBooked()))
                     .sorted(Comparator.comparing(Seat::getSeatCode).reversed())
                     .limit(seatsToRemove)
                     .toList();
 
-            // Ensure all candidates are not booked
-            boolean anyBooked = candidates.stream().anyMatch(Seat::getIsBooked);
-            if (anyBooked) {
-                throw new IllegalStateException("Cannot decrease seat capacity: some seats to be removed are already booked");
+            if (removable.size() < seatsToRemove) {
+                throw new IllegalStateException("Cannot decrease seat capacity: not enough unbooked tail seats available to remove");
             }
 
-            // Delete seats
-            for (Seat s : candidates) {
+            // Delete the selected seats
+            for (Seat s : removable) {
                 seatRepository.delete(s);
             }
         }
