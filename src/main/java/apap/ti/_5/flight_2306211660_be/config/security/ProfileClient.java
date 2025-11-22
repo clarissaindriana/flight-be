@@ -156,4 +156,105 @@ public class ProfileClient {
             return null;
         }
     }
+
+    // Fetch user by id: GET /api/users/{id}
+    public ProfileUserWrapper getUserById(String id) {
+        try {
+            Mono<ProfileUserWrapper> mono = webClient.get()
+                    .uri(uriBuilder -> uriBuilder.path("/api/users/{id}").build(id))
+                    .retrieve()
+                    .bodyToMono(ProfileUserWrapper.class)
+                    .onErrorReturn(null);
+
+            return mono.block();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    public static class ProfileUserWrapper {
+        private Integer status;
+        private String message;
+        private ProfileUser data;
+
+        public ProfileUser getData() { return data; }
+        public void setData(ProfileUser data) { this.data = data; }
+    }
+
+    public static class ProfileUsersWrapper {
+        private Integer status;
+        private String message;
+        private java.util.List<ProfileUser> data;
+
+        public java.util.List<ProfileUser> getData() { return data; }
+        public void setData(java.util.List<ProfileUser> data) { this.data = data; }
+    }
+
+    // Fetch all customers: GET /api/users/customers
+    public ProfileUsersWrapper getCustomers() {
+        try {
+            Mono<ProfileUsersWrapper> mono = webClient.get()
+                    .uri("/api/users/customers")
+                    .retrieve()
+                    .bodyToMono(ProfileUsersWrapper.class)
+                    .onErrorReturn(null);
+
+            return mono.block();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    // Fetch all users: GET /api/users
+    public ProfileUsersWrapper getAllUsers() {
+        try {
+            Mono<ProfileUsersWrapper> mono = webClient.get()
+                    .uri("/api/users")
+                    .retrieve()
+                    .bodyToMono(ProfileUsersWrapper.class)
+                    .onErrorReturn(null);
+
+            return mono.block();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    // Update user profile: PUT /api/users/{id}
+    public ProfileUserWrapper updateUser(String id, Object payload) {
+        try {
+            Mono<ProfileUserWrapper> mono = webClient.put()
+                    .uri(uriBuilder -> uriBuilder.path("/api/users/{id}").build(id))
+                    .bodyValue(payload)
+                    .retrieve()
+                    .bodyToMono(ProfileUserWrapper.class)
+                    .onErrorReturn(null);
+
+            return mono.block();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    public static class ProfileUser {
+        private String id;
+        private String username;
+        private String email;
+        private String name;
+        private String role;
+        private java.math.BigDecimal balance;
+
+        public String getId() { return id; }
+        public void setId(String id) { this.id = id; }
+        public String getUsername() { return username; }
+        public void setUsername(String username) { this.username = username; }
+        public String getEmail() { return email; }
+        public void setEmail(String email) { this.email = email; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getRole() { return role; }
+        public void setRole(String role) { this.role = role; }
+        public java.math.BigDecimal getBalance() { return balance; }
+        public void setBalance(java.math.BigDecimal balance) { this.balance = balance; }
+    }
 }

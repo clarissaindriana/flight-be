@@ -1,6 +1,7 @@
 package apap.ti._5.flight_2306211660_be.restservice.booking;
 
 import java.math.BigDecimal;
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -15,6 +16,7 @@ import apap.ti._5.flight_2306211660_be.model.ClassFlight;
 import apap.ti._5.flight_2306211660_be.model.Flight;
 import apap.ti._5.flight_2306211660_be.model.Passenger;
 import apap.ti._5.flight_2306211660_be.model.Seat;
+import apap.ti._5.flight_2306211660_be.repository.AirlineRepository;
 import apap.ti._5.flight_2306211660_be.repository.BookingPassengerRepository;
 import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
 import apap.ti._5.flight_2306211660_be.repository.ClassFlightRepository;
@@ -24,6 +26,9 @@ import apap.ti._5.flight_2306211660_be.repository.SeatRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.passenger.AddPassengerRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingChartResponseDTO;
+import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingChartResultDTO;
+import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingChartSummaryDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingResponseDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.passenger.PassengerResponseDTO;
 
@@ -47,6 +52,9 @@ public class BookingRestServiceImpl implements BookingRestService {
 
     @Autowired
     private SeatRepository seatRepository;
+
+    @Autowired
+    private AirlineRepository airlineRepository;
 
     @Override
     @Transactional
@@ -95,6 +103,11 @@ public class BookingRestServiceImpl implements BookingRestService {
                 throw new IllegalArgumentException("Number of seat IDs must match passenger count");
             }
         }
+
+            // Validate passengerCount limits
+            if (dto.getPassengerCount() == null || dto.getPassengerCount() <= 0) {
+                throw new IllegalArgumentException("Passenger count must be greater than zero");
+            }
 
         // Validate passengers count matches
         if (dto.getPassengers().size() != dto.getPassengerCount()) {
@@ -159,9 +172,13 @@ public class BookingRestServiceImpl implements BookingRestService {
             allocateSeats(bookingCode, dto.getPassengerCount(), classFlight.getId());
         }
 
-        // Update available seats
-        classFlight.setAvailableSeats(classFlight.getAvailableSeats() - dto.getPassengerCount());
+        // Update available seats safely
+        int newAvailableFinal = classFlight.getAvailableSeats() - dto.getPassengerCount();
+        if (newAvailableFinal < 0) throw new IllegalStateException("Available seats would become negative");
+        classFlight.setAvailableSeats(newAvailableFinal);
         classFlightRepository.save(classFlight);
+
+        // TODO: call billing service to create bill for this booking (async/remote)
 
         return convertToBookingResponseDTO(booking);
     }
@@ -169,6 +186,42 @@ public class BookingRestServiceImpl implements BookingRestService {
     @Override
     public List<BookingResponseDTO> getAllBookings() {
         List<Booking> bookings = bookingRepository.findByIsDeleted(false);
+        return bookings.stream()
+                .map(this::convertToBookingResponseDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<BookingResponseDTO> getAllBookings(Boolean includeDeleted, String search, String contactEmail, Integer status) {
+        List<Booking> bookings;
+        if (includeDeleted != null && includeDeleted) {
+            bookings = bookingRepository.findAll();
+        } else {
+            bookings = bookingRepository.findByIsDeleted(false);
+        }
+
+        // Apply search filter: booking id or flight id (case-insensitive)
+        if (search != null && !search.trim().isEmpty()) {
+            String s = search.trim().toLowerCase();
+            bookings = bookings.stream()
+                    .filter(b -> (b.getId() != null && b.getId().toLowerCase().contains(s)) || (b.getFlightId() != null && b.getFlightId().toLowerCase().contains(s)))
+                    .collect(Collectors.toList());
+        }
+
+        // Apply contactEmail filter (case-sensitive exact match)
+        if (contactEmail != null && !contactEmail.isEmpty()) {
+            bookings = bookings.stream()
+                    .filter(b -> contactEmail.equals(b.getContactEmail()))
+                    .collect(Collectors.toList());
+        }
+
+        // Apply status filter
+        if (status != null) {
+            bookings = bookings.stream()
+                    .filter(b -> b.getStatus() != null && b.getStatus().equals(status))
+                    .collect(Collectors.toList());
+        }
+
         return bookings.stream()
                 .map(this::convertToBookingResponseDTO)
                 .collect(Collectors.toList());
@@ -197,6 +250,11 @@ public class BookingRestServiceImpl implements BookingRestService {
 
     @Override
     public List<BookingResponseDTO> getBookingsByFlight(String flightId, Boolean includeDeleted) {
+        return getBookingsByFlight(flightId, includeDeleted, null, null, null);
+    }
+
+    @Override
+    public List<BookingResponseDTO> getBookingsByFlight(String flightId, Boolean includeDeleted, String search, String contactEmail, Integer status) {
         List<Booking> bookings;
         if (includeDeleted != null && includeDeleted) {
             bookings = bookingRepository.findAll().stream()
@@ -205,6 +263,27 @@ public class BookingRestServiceImpl implements BookingRestService {
         } else {
             bookings = bookingRepository.findByFlightIdAndIsDeleted(flightId, false);
         }
+
+        // Apply search filter (booking id or flight id)
+        if (search != null && !search.trim().isEmpty()) {
+            String s = search.trim().toLowerCase();
+            bookings = bookings.stream()
+                    .filter(b -> (b.getId() != null && b.getId().toLowerCase().contains(s)) || (b.getFlightId() != null && b.getFlightId().toLowerCase().contains(s)))
+                    .collect(Collectors.toList());
+        }
+
+        if (contactEmail != null && !contactEmail.isEmpty()) {
+            bookings = bookings.stream()
+                    .filter(b -> contactEmail.equals(b.getContactEmail()))
+                    .collect(Collectors.toList());
+        }
+
+        if (status != null) {
+            bookings = bookings.stream()
+                    .filter(b -> b.getStatus() != null && b.getStatus().equals(status))
+                    .collect(Collectors.toList());
+        }
+
         return bookings.stream()
                 .map(this::convertToBookingResponseDTO)
                 .collect(Collectors.toList());
@@ -216,7 +295,8 @@ public class BookingRestServiceImpl implements BookingRestService {
         if (booking == null) {
             return null;
         }
-        // Return even if soft-deleted (FE must render read-only for isDeleted = TRUE)
+        // Only return if not soft-deleted
+        if (booking.getIsDeleted() != null && booking.getIsDeleted()) return null;
         return convertToBookingResponseDTO(booking);
     }
 
@@ -552,6 +632,8 @@ public class BookingRestServiceImpl implements BookingRestService {
         return BookingResponseDTO.builder()
                 .id(booking.getId())
                 .flightId(booking.getFlightId())
+            .route((flightRepository.findById(booking.getFlightId()).isPresent()) ?
+                (flightRepository.findById(booking.getFlightId()).get().getOriginAirportCode() + "-" + flightRepository.findById(booking.getFlightId()).get().getDestinationAirportCode()) : null)
                 .classFlightId(booking.getClassFlightId())
                 .classType(classType)
                 .contactEmail(booking.getContactEmail())
@@ -605,8 +687,10 @@ public class BookingRestServiceImpl implements BookingRestService {
                             .findFirst();
                     if (seatOpt.isPresent()) {
                         Seat s = seatOpt.get();
+                        Passenger p = passengerRepository.findById(bp.getPassengerId()).orElse(null);
+                        String pname = (p != null) ? p.getFullName() : null;
                         return new apap.ti._5.flight_2306211660_be.restdto.response.booking.PassengerSeatAssignmentResponseDTO(
-                                bp.getPassengerId(), s.getId(), s.getSeatCode()
+                                bp.getPassengerId(), s.getId(), s.getSeatCode(), pname
                         );
                     }
                     return null;
@@ -614,4 +698,78 @@ public class BookingRestServiceImpl implements BookingRestService {
                 .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toList());
     }
+
+    @Override
+    public java.util.List<BookingChartResponseDTO> getBookingChart(int month, int year) {
+        // Filter only Unpaid(1) and Paid(2), not soft-deleted, within given month/year by createdAt
+        List<Booking> filtered = bookingRepository.findAll().stream()
+                .filter(b -> b.getIsDeleted() != null && !b.getIsDeleted())
+                .filter(b -> b.getStatus() != null && (b.getStatus() == 1 || b.getStatus() == 2))
+                .filter(b -> {
+                    if (b.getCreatedAt() == null) return false;
+                    java.time.LocalDateTime c = b.getCreatedAt();
+                    return c.getMonthValue() == month && c.getYear() == year;
+                })
+                .collect(Collectors.toList());
+
+        // Group by flightId and compute bookingCount + totalRevenue
+        List<BookingChartResponseDTO> stats = filtered.stream()
+                .collect(Collectors.groupingBy(Booking::getFlightId))
+                .entrySet().stream()
+                .map(e -> {
+                    String flightId = e.getKey();
+                    List<Booking> list = e.getValue();
+                    Long bookingCount = (long) list.size();
+                    BigDecimal totalRevenue = list.stream()
+                            .map(Booking::getTotalPrice)
+                            .filter(v -> v != null)
+                            .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+                    Flight f = flightRepository.findById(flightId).orElse(null);
+                    String origin = (f != null) ? f.getOriginAirportCode() : null;
+                    String destination = (f != null) ? f.getDestinationAirportCode() : null;
+                    String airlineName = null;
+                    if (f != null && f.getAirlineId() != null) {
+                        var a = airlineRepository.findById(f.getAirlineId()).orElse(null);
+                        if (a != null) airlineName = a.getName();
+                    }
+
+                    return BookingChartResponseDTO.builder()
+                            .flightId(flightId)
+                            .airlineName(airlineName)
+                            .origin(origin)
+                            .destination(destination)
+                            .totalBookings(bookingCount)
+                            .totalRevenue(totalRevenue)
+                            .build();
+                })
+                .sorted(java.util.Comparator.comparing(BookingChartResponseDTO::getFlightId))
+                .collect(Collectors.toList());
+
+        return stats;
+    }
+
+            @Override
+            public BookingChartResultDTO getBookingChartData(int month, int year) {
+            List<BookingChartResponseDTO> chart = getBookingChart(month, year);
+
+            // compute summary
+            long totalBookings = chart.stream().mapToLong(c -> c.getTotalBookings() != null ? c.getTotalBookings().longValue() : 0L).sum();
+            java.math.BigDecimal totalRevenue = chart.stream()
+                .map(c -> c.getTotalRevenue() != null ? c.getTotalRevenue() : java.math.BigDecimal.ZERO)
+                .reduce(java.math.BigDecimal.ZERO, java.math.BigDecimal::add);
+
+            BookingChartResponseDTO top = chart.stream()
+                .max(Comparator.comparingLong((BookingChartResponseDTO c) -> c.getTotalBookings() != null ? c.getTotalBookings().longValue() : 0L)
+                    .thenComparing(c -> c.getTotalRevenue() != null ? c.getTotalRevenue() : java.math.BigDecimal.ZERO))
+                .orElse(null);
+
+            BookingChartSummaryDTO summary = new BookingChartSummaryDTO(
+                totalBookings,
+                totalRevenue,
+                top != null ? top.getFlightId() : null
+            );
+
+            return new BookingChartResultDTO(chart, summary);
+            }
 }

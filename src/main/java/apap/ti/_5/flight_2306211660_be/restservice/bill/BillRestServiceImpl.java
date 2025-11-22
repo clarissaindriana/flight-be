@@ -1,0 +1,185 @@
+package apap.ti._5.flight_2306211660_be.restservice.bill;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.env.Environment;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import apap.ti._5.flight_2306211660_be.config.security.ProfileClient;
+import apap.ti._5.flight_2306211660_be.model.Bill;
+import apap.ti._5.flight_2306211660_be.repository.BillRepository;
+import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
+
+@Service
+public class BillRestServiceImpl implements BillRestService {
+
+    private final BillRepository billRepository;
+    private final ProfileClient profileClient;
+    private final Environment env;
+    private final Logger logger = LoggerFactory.getLogger(BillRestServiceImpl.class);
+
+    public BillRestServiceImpl(BillRepository billRepository, ProfileClient profileClient, Environment env) {
+        this.billRepository = billRepository;
+        this.profileClient = profileClient;
+        this.env = env;
+    }
+
+    @Override
+    public Bill createBill(AddBillRequestDTO req) throws Exception {
+        // validations should be done at controller level; implement basic checks
+        Bill bill = Bill.builder()
+                .id(UUID.randomUUID())
+                .customerId(req.getCustomerId())
+                .serviceName(req.getServiceName())
+                .serviceReferenceId(req.getServiceReferenceId())
+                .description(req.getDescription())
+                .amount(req.getAmount())
+                .status(Bill.BillStatus.UNPAID)
+                .build();
+
+        return billRepository.save(bill);
+    }
+
+    @Override
+    public List<Bill> getAllBills(String customerId, String serviceName, String status) {
+        List<Bill> all = billRepository.findAll();
+        return filterBills(all, customerId, serviceName, status);
+    }
+
+    @Override
+    public List<Bill> getCustomerBills(String customerId, String status, String sortBy, String order) {
+        List<Bill> list = billRepository.findByCustomerId(customerId);
+        list = filterBills(list, customerId, null, status);
+
+        // basic sorting
+        if (sortBy != null) {
+            boolean asc = !"desc".equalsIgnoreCase(order);
+            if ("createdAt".equalsIgnoreCase(sortBy)) {
+                list = list.stream().sorted((a,b) -> asc ? a.getCreatedAt().compareTo(b.getCreatedAt()) : b.getCreatedAt().compareTo(a.getCreatedAt())).collect(Collectors.toList());
+            } else if ("serviceName".equalsIgnoreCase(sortBy)) {
+                list = list.stream().sorted((a,b) -> asc ? a.getServiceName().compareTo(b.getServiceName()) : b.getServiceName().compareTo(a.getServiceName())).collect(Collectors.toList());
+            }
+        }
+
+        return list;
+    }
+
+    @Override
+    public List<Bill> getServiceBills(String serviceName, String customerId, String status) {
+        List<Bill> list = billRepository.findByServiceName(serviceName);
+        return filterBills(list, customerId, serviceName, status);
+    }
+
+    @Override
+    public Bill getBillById(UUID id) {
+        Optional<Bill> opt = billRepository.findById(id);
+        return opt.orElse(null);
+    }
+
+    @Override
+    @Transactional
+    public Bill payBill(UUID id, String customerIdFromToken, String couponCode) throws Exception {
+        Bill bill = getBillById(id);
+        if (bill == null) throw new IllegalArgumentException("No Bill Found");
+        
+        // Validate bill status is UNPAID (must be checked first)
+        if (bill.getStatus() != Bill.BillStatus.UNPAID) {
+            throw new IllegalStateException("Bill is not in UNPAID status");
+        }
+        
+        // Validate customerId matches
+        if (!bill.getCustomerId().equals(customerIdFromToken)) {
+            throw new SecurityException("Customer not allowed to pay this bill");
+        }
+
+        // Fetch customer profile for balance (balance check is early step)
+        ProfileClient.ProfileUserWrapper wrapper = profileClient.getUserById(customerIdFromToken);
+        if (wrapper == null || wrapper.getData() == null) {
+            throw new IllegalStateException("Unable to fetch user profile");
+        }
+
+        ProfileClient.ProfileUser user = wrapper.getData();
+        BigDecimal balance = user.getBalance() == null ? BigDecimal.ZERO : user.getBalance();
+        BigDecimal finalAmount = bill.getAmount();
+
+        // Check balance first (all processes must be blocked if balance insufficient)
+        if (balance.compareTo(finalAmount) < 0) {
+            throw new IllegalStateException("User balance insufficient, please Top Up balance.");
+        }
+
+        // TODO: If couponCode provided, call Loyalty Service to validate and compute percentOff
+        // For now we skip loyalty and assume percentOff = 0
+
+        // Deduct balance
+        BigDecimal newBalance = balance.subtract(finalAmount);
+        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("balance", newBalance);
+        profileClient.updateUser(customerIdFromToken, payload);
+
+        // Update bill status to PAID
+        bill.setStatus(Bill.BillStatus.PAID);
+        bill.setPaymentTimestamp(LocalDateTime.now());
+        bill = billRepository.save(bill);
+
+        // Send callback to origin service (best-effort)
+        try {
+            sendCallbackToOriginService(bill);
+        } catch (Exception ex) {
+            logger.warn("Callback to origin service failed: {}", ex.getMessage());
+        }
+
+        // TODO: Add loyalty points (1% of amount, rounded up) to customer via Loyalty Service
+
+        return bill;
+    }
+
+    private List<Bill> filterBills(List<Bill> source, String customerId, String serviceName, String status) {
+        if (source == null) return new ArrayList<>();
+        return source.stream().filter(b -> {
+            if (customerId != null && !customerId.isBlank() && !customerId.equals(b.getCustomerId())) return false;
+            if (serviceName != null && !serviceName.isBlank() && !serviceName.equalsIgnoreCase(b.getServiceName())) return false;
+            if (status != null && !status.isBlank()) {
+                try {
+                    Bill.BillStatus st = Bill.BillStatus.valueOf(status.toUpperCase());
+                    if (b.getStatus() != st) return false;
+                } catch (Exception ex) {
+                    return false;
+                }
+            }
+            return true;
+        }).collect(Collectors.toList());
+    }
+
+    private void sendCallbackToOriginService(Bill bill) {
+        // Attempt to call origin service callback URL if configured via property
+        String key = "service.callback.base-url." + bill.getServiceName().toLowerCase();
+        String base = env.getProperty(key, "");
+        if (base == null || base.isBlank()) {
+            logger.info("No callback base URL configured for service {} (property {}). Skipping callback.", bill.getServiceName(), key);
+            return;
+        }
+
+        try {
+            org.springframework.web.reactive.function.client.WebClient wc = org.springframework.web.reactive.function.client.WebClient.create(base);
+            String path = "/api/internal/bill-callback"; // standard callback path expected on services
+            java.util.Map<String, Object> payload = new java.util.HashMap<>();
+            payload.put("serviceReferenceId", bill.getServiceReferenceId());
+            payload.put("billId", bill.getId().toString());
+            payload.put("status", bill.getStatus().name());
+
+            wc.post().uri(path).bodyValue(payload).retrieve().bodyToMono(Object.class).block();
+            logger.info("Callback sent to {}{}", base, path);
+        } catch (Exception ex) {
+            logger.warn("Failed to send callback to origin service {}: {}", bill.getServiceName(), ex.getMessage());
+        }
+    }
+}

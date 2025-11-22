@@ -36,6 +36,11 @@ public class BookingRestController {
     @Autowired
     private BookingRepository bookingRepository;
 
+    @Autowired
+    private apap.ti._5.flight_2306211660_be.restservice.bill.BillRestService billRestService;
+
+    private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BookingRestController.class);
+
     public static final String BASE_URL = "/booking";
     public static final String VIEW_BOOKING = BASE_URL + "/{id}";
     public static final String CREATE_BOOKING = BASE_URL + "/create";
@@ -46,16 +51,32 @@ public class BookingRestController {
     @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN','FLIGHT_AIRLINE')")
     public ResponseEntity<BaseResponseDTO<List<BookingResponseDTO>>> getAllBookings(
             @RequestParam(required = false) String flightId,
-            @RequestParam(required = false) Boolean includeDeleted) {
+            @RequestParam(required = false) Boolean includeDeleted,
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String contactEmail,
+            @RequestParam(required = false) Integer status) {
         var baseResponseDTO = new BaseResponseDTO<List<BookingResponseDTO>>();
 
         List<BookingResponseDTO> bookings;
 
+        // includeDeleted may only be requested by SUPERADMIN or FLIGHT_AIRLINE
+        if (includeDeleted != null && includeDeleted) {
+            var auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+            boolean allowed = auth.getAuthorities().stream()
+                    .anyMatch(a -> a.getAuthority().equals("ROLE_SUPERADMIN") || a.getAuthority().equals("ROLE_FLIGHT_AIRLINE"));
+            if (!allowed) {
+                baseResponseDTO.setStatus(HttpStatus.FORBIDDEN.value());
+                baseResponseDTO.setMessage("Access denied: includeDeleted filter is restricted");
+                baseResponseDTO.setTimestamp(new Date());
+                return new ResponseEntity<>(baseResponseDTO, HttpStatus.FORBIDDEN);
+            }
+        }
+
         if (flightId != null) {
-            bookings = bookingRestService.getBookingsByFlight(flightId, includeDeleted);
+            bookings = bookingRestService.getBookingsByFlight(flightId, includeDeleted, search, contactEmail, status);
         } else {
             // Default: show active only when includeDeleted is null/false; include archives when true
-            bookings = bookingRestService.getAllBookings(includeDeleted);
+            bookings = bookingRestService.getAllBookings(includeDeleted, search, contactEmail, status);
         }
 
         // Ownership enforcement: if current user is CUSTOMER, only return bookings with contactEmail == user's email
@@ -141,6 +162,24 @@ public class BookingRestController {
                 }
             }
             BookingResponseDTO booking = bookingRestService.createBooking(addBookingRequestDTO);
+
+            // Auto-create bill for this booking (best-effort). Use CurrentUser.getUserId() as customerId when available.
+            try {
+                String customerId = CurrentUser.getUserId();
+                if (customerId == null || customerId.isBlank()) customerId = booking.getContactEmail();
+
+                apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO billReq = new apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO();
+                billReq.setCustomerId(customerId);
+                billReq.setServiceName("Flight");
+                billReq.setServiceReferenceId(booking.getId());
+                String desc = "Booking Flight " + (booking.getRoute() != null ? booking.getRoute() : booking.getId()) + " - " + (booking.getClassType() != null ? booking.getClassType() : "");
+                billReq.setDescription(desc);
+                billReq.setAmount(booking.getTotalPrice() != null ? booking.getTotalPrice() : java.math.BigDecimal.ZERO);
+
+                billRestService.createBill(billReq);
+            } catch (Exception e) {
+                logger.warn("Failed to create bill for booking {}: {}", booking.getId(), e.getMessage());
+            }
 
             baseResponseDTO.setStatus(HttpStatus.CREATED.value());
             baseResponseDTO.setData(booking);
@@ -235,58 +274,7 @@ public class BookingRestController {
     }
     
     // GET /api/booking/statistics?start=YYYY-MM-DD&end=YYYY-MM-DD
-    @GetMapping(BASE_URL + "/statistics")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
-    public ResponseEntity<BaseResponseDTO<List<Map<String, Object>>>> getBookingStatistics(
-            @RequestParam String start,
-            @RequestParam String end) {
-        var baseResponseDTO = new BaseResponseDTO<List<Map<String, Object>>>();
-        try {
-            LocalDate startDate = LocalDate.parse(start);
-            LocalDate endDate = LocalDate.parse(end);
-            LocalDateTime startDt = startDate.atStartOfDay();
-            LocalDateTime endDt = endDate.atTime(23, 59, 59);
-
-            // Filter only Unpaid(1) and Paid(2), not soft-deleted, within period by createdAt
-            List<Booking> filtered = bookingRepository.findAll().stream()
-                    .filter(b -> b.getIsDeleted() != null && !b.getIsDeleted())
-                    .filter(b -> b.getStatus() != null && (b.getStatus() == 1 || b.getStatus() == 2))
-                    .filter(b -> {
-                        LocalDateTime c = b.getCreatedAt();
-                        return c != null && !c.isBefore(startDt) && !c.isAfter(endDt);
-                    })
-                    .collect(Collectors.toList());
-
-            // Group by flightId and compute bookingCount + totalRevenue
-            List<Map<String, Object>> stats = filtered.stream()
-                    .collect(Collectors.groupingBy(Booking::getFlightId))
-                    .entrySet().stream()
-                    .map(e -> {
-                        Map<String, Object> m = new HashMap<>();
-                        m.put("flightId", e.getKey());
-                        m.put("bookingCount", e.getValue().size());
-                        BigDecimal totalRevenue = e.getValue().stream()
-                                .map(Booking::getTotalPrice)
-                                .filter(v -> v != null)
-                                .reduce(BigDecimal.ZERO, BigDecimal::add);
-                        m.put("totalRevenue", totalRevenue);
-                        return m;
-                    })
-                    .sorted(Comparator.comparing(m -> (String) m.get("flightId")))
-                    .collect(Collectors.toList());
-
-            baseResponseDTO.setStatus(HttpStatus.OK.value());
-            baseResponseDTO.setData(stats);
-            baseResponseDTO.setMessage("Booking statistics calculated successfully");
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
-        } catch (Exception ex) {
-            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
-            baseResponseDTO.setMessage("Invalid request: " + ex.getMessage());
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
-        }
-    }
+    // Note: statistics endpoint removed in favor of unified /chart service
 
     @GetMapping(BASE_URL + "/today")
     @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
@@ -304,6 +292,45 @@ public class BookingRestController {
             base.setMessage("Error: " + ex.getMessage());
             base.setTimestamp(new Date());
             return new ResponseEntity<>(base, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @GetMapping(BASE_URL + "/chart")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
+    public ResponseEntity<BaseResponseDTO<Object>> getBookingChart(
+            @RequestParam int month,
+            @RequestParam int year) {
+        var base = new BaseResponseDTO<Object>();
+        try {
+            var result = bookingRestService.getBookingChartData(month, year);
+            // If no chart data for the period, return HTTP 200 with empty list as required
+            if (result.getChart() == null || result.getChart().isEmpty()) {
+                base.setStatus(HttpStatus.OK.value());
+                base.setData(java.util.Collections.emptyList());
+                base.setMessage("No booking data for the selected period");
+                base.setTimestamp(new Date());
+                return ResponseEntity.ok(base);
+            }
+
+            // Build response map when we have data
+            Map<String, Object> data = new HashMap<>();
+            data.put("chart", result.getChart());
+            Map<String, Object> summary = new HashMap<>();
+            summary.put("totalBookings", result.getSummary() != null ? result.getSummary().getTotalBookings() : 0L);
+            summary.put("totalRevenue", result.getSummary() != null ? result.getSummary().getTotalRevenue() : java.math.BigDecimal.ZERO);
+            summary.put("topPerformer", result.getSummary() != null ? result.getSummary().getTopPerformer() : null);
+            data.put("summary", summary);
+
+            base.setStatus(HttpStatus.OK.value());
+            base.setData(data);
+            base.setMessage("Booking chart computed");
+            base.setTimestamp(new Date());
+            return ResponseEntity.ok(base);
+        } catch (Exception ex) {
+            base.setStatus(HttpStatus.BAD_REQUEST.value());
+            base.setMessage("Invalid request: " + ex.getMessage());
+            base.setTimestamp(new Date());
+            return new ResponseEntity<>(base, HttpStatus.BAD_REQUEST);
         }
     }
 

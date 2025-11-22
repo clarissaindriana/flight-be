@@ -124,6 +124,40 @@ public class AirplaneRestController {
         return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
     }
 
+    @DeleteMapping(VIEW_AIRPLANE)
+    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
+    public ResponseEntity<BaseResponseDTO<AirplaneResponseDTO>> deleteAirplaneByDeleteVerb(@PathVariable String id) {
+        var baseResponseDTO = new BaseResponseDTO<AirplaneResponseDTO>();
+
+        try {
+            AirplaneResponseDTO airplane = airplaneRestService.deleteAirplane(id);
+
+            if (airplane == null) {
+                baseResponseDTO.setStatus(HttpStatus.NOT_FOUND.value());
+                baseResponseDTO.setMessage("Airplane Tidak Ditemukan");
+                baseResponseDTO.setTimestamp(new Date());
+                return new ResponseEntity<>(baseResponseDTO, HttpStatus.NOT_FOUND);
+            }
+
+            baseResponseDTO.setStatus(HttpStatus.OK.value());
+            baseResponseDTO.setData(airplane);
+            baseResponseDTO.setMessage("Data Airplane Berhasil Dihapus");
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
+
+        } catch (IllegalStateException ex) {
+            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
+            baseResponseDTO.setMessage(ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
+        } catch (Exception ex) {
+            baseResponseDTO.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            baseResponseDTO.setMessage("Terjadi kesalahan pada server: " + ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     @PostMapping(CREATE_AIRPLANE)
     @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
     public ResponseEntity<BaseResponseDTO<AirplaneResponseDTO>> createAirplane(

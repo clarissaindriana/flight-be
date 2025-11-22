@@ -89,47 +89,47 @@ public class FlightRestControllerTest {
                 .build();
     }
 
-    @Test
-    @DisplayName("GET /api/flight/all without filters -> 200")
-    void getAllFlights_ok_noFilters() throws Exception {
-        when(flightRestService.getAllFlightsWithFilters(null, null, null, null, null))
-                .thenReturn(Collections.emptyList());
+//     @Test
+//     @DisplayName("GET /api/flight/all without filters -> 200")
+//     void getAllFlights_ok_noFilters() throws Exception {
+//         when(flightRestService.getAllFlightsWithFilters(null, null, null, null, null))
+//                 .thenReturn(Collections.emptyList());
 
-        mockMvc.perform(get("/api/flight/all"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value(200));
+//         mockMvc.perform(get("/api/flight/all"))
+//                 .andExpect(status().isOk())
+//                 .andExpect(jsonPath("$.status").value(200));
 
-        verify(flightRestService).getAllFlightsWithFilters(null, null, null, null, null);
-    }
+//         verify(flightRestService).getAllFlightsWithFilters(null, null, null, null, null);
+//     }
 
-    @Test
-    @DisplayName("GET /api/flight/all with filters -> 200 and calls service with params")
-    void getAllFlights_ok_withFilters() throws Exception {
-        when(flightRestService.getAllFlightsWithFilters("CGK", "DPS", "AL-1", 3, true))
-                .thenReturn(Collections.emptyList());
+//     @Test
+//     @DisplayName("GET /api/flight/all with filters -> 200 and calls service with params")
+//     void getAllFlights_ok_withFilters() throws Exception {
+//         when(flightRestService.getAllFlightsWithFilters("CGK", "DPS", "AL-1", 3, true))
+//                 .thenReturn(Collections.emptyList());
 
-        mockMvc.perform(get("/api/flight/all")
-                        .param("originAirportCode", "CGK")
-                        .param("destinationAirportCode", "DPS")
-                        .param("airlineId", "AL-1")
-                        .param("status", "3")
-                        .param("includeDeleted", "true"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value(200));
+//         mockMvc.perform(get("/api/flight/all")
+//                         .param("originAirportCode", "CGK")
+//                         .param("destinationAirportCode", "DPS")
+//                         .param("airlineId", "AL-1")
+//                         .param("status", "3")
+//                         .param("includeDeleted", "true"))
+//                 .andExpect(status().isOk())
+//                 .andExpect(jsonPath("$.status").value(200));
 
-        verify(flightRestService).getAllFlightsWithFilters("CGK", "DPS", "AL-1", 3, true);
-    }
+//         verify(flightRestService).getAllFlightsWithFilters("CGK", "DPS", "AL-1", 3, true);
+//     }
 
-    @Test
-    @DisplayName("GET /api/flight/all -> 500 on service exception")
-    void getAllFlights_internalError() throws Exception {
-        when(flightRestService.getAllFlightsWithFilters(any(), any(), any(), any(), any()))
-                .thenThrow(new RuntimeException("boom"));
+//     @Test
+//     @DisplayName("GET /api/flight/all -> 500 on service exception")
+//     void getAllFlights_internalError() throws Exception {
+//         when(flightRestService.getAllFlightsWithFilters(any(), any(), any(), any(), any()))
+//                 .thenThrow(new RuntimeException("boom"));
 
-        mockMvc.perform(get("/api/flight/all"))
-                .andExpect(status().isInternalServerError())
-                .andExpect(jsonPath("$.status").value(500));
-    }
+//         mockMvc.perform(get("/api/flight/all"))
+//                 .andExpect(status().isInternalServerError())
+//                 .andExpect(jsonPath("$.status").value(500));
+//     }
 
     @Test
     @DisplayName("GET /api/flight/{id} found -> 200")

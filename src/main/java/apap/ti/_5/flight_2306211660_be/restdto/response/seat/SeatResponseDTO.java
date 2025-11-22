@@ -19,6 +19,7 @@ public class SeatResponseDTO {
     private UUID passengerId;
     private String seatCode;
     private Boolean isBooked;
+    private String passengerName;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

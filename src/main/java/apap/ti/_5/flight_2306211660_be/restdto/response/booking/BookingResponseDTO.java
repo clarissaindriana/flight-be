@@ -5,7 +5,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import apap.ti._5.flight_2306211660_be.restdto.response.passenger.PassengerResponseDTO;
-import apap.ti._5.flight_2306211660_be.restdto.response.booking.PassengerSeatAssignmentResponseDTO;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -19,6 +18,7 @@ public class BookingResponseDTO {
 
     private String id;
     private String flightId;
+    private String route;
 
     // Numeric identifier of class flight (kept for backward compatibility)
     private Integer classFlightId;

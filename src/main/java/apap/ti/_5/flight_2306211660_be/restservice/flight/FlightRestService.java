@@ -17,7 +17,12 @@ public interface FlightRestService {
     FlightResponseDTO getFlight(String id);
 
     List<FlightResponseDTO> getAllFlightsWithFilters(String originAirportCode, String destinationAirportCode,
-                                                   String airlineId, Integer status, Boolean includeDeleted);
+                                                   String airlineId, Integer status, Boolean includeDeleted, String search);
+
+    // Reminder: upcoming flights within interval (hours). If customerId provided, only include flights booked (Paid) by that customer.
+    java.util.List<apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightReminderResponseDTO> getFlightReminders(Integer intervalHours, String customerUserId);
+
+    long getActiveFlightsTodayCount();
 
     FlightResponseDTO getFlightDetail(String id);
 

@@ -28,6 +28,7 @@ import apap.ti._5.flight_2306211660_be.restdto.request.flight.UpdateFlightReques
 import apap.ti._5.flight_2306211660_be.restdto.request.seat.AddSeatRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.classFlight.ClassFlightResponseDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightResponseDTO;
+import apap.ti._5.flight_2306211660_be.restservice.airport.AirportRestService;
 import apap.ti._5.flight_2306211660_be.restservice.classFlight.ClassFlightRestService;
 import apap.ti._5.flight_2306211660_be.restservice.seat.SeatRestService;
 
@@ -60,6 +61,85 @@ public class FlightRestServiceImpl implements FlightRestService {
 
     @Autowired
     private AirlineRepository airlineRepository;
+
+    @Autowired
+    private AirportRestService airportRestService;
+
+    @Autowired
+    private apap.ti._5.flight_2306211660_be.config.security.ProfileClient profileClient;
+
+        @Override
+        public java.util.List<apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightReminderResponseDTO> getFlightReminders(Integer intervalHours, String customerUserId) {
+        // Validate interval
+        int hours = (intervalHours == null || intervalHours <= 0) ? 3 : intervalHours;
+
+        java.time.LocalDateTime now = java.time.LocalDateTime.now();
+        java.time.LocalDateTime end = now.plusHours(hours);
+
+        // Find candidate flights: not deleted, status Scheduled(1) or Delayed(4), departure after now and <= end
+        List<Flight> candidates = flightRepository.findByIsDeleted(false).stream()
+            .map(this::updateFlightStatusBasedOnTime)
+            .filter(f -> f.getIsDeleted() != null && !f.getIsDeleted())
+            .filter(f -> f.getStatus() != null && (f.getStatus() == 1 || f.getStatus() == 4))
+            .filter(f -> f.getDepartureTime() != null && f.getDepartureTime().isAfter(now) && !f.getDepartureTime().isAfter(end))
+            .collect(Collectors.toList());
+
+        // If customerUserId specified, fetch user email from profile service and filter bookings by contactEmail == user.email
+        String customerEmail = null;
+        if (customerUserId != null && !customerUserId.isBlank()) {
+            apap.ti._5.flight_2306211660_be.config.security.ProfileClient.ProfileUserWrapper userWrap = profileClient.getUserById(customerUserId);
+            if (userWrap != null && userWrap.getData() != null) {
+                customerEmail = userWrap.getData().getEmail();
+            }
+            // If email still null, no flights will match
+            if (customerEmail != null) {
+                final String emailFinal = customerEmail;
+                candidates = candidates.stream()
+                        .filter(f -> bookingRepository.findByFlightIdAndIsDeleted(f.getId(), false).stream()
+                                .anyMatch(b -> b.getStatus() != null && b.getStatus() == 2 && emailFinal.equalsIgnoreCase(b.getContactEmail())))
+                        .collect(Collectors.toList());
+            } else {
+                candidates = List.of();
+            }
+        }
+
+        // Build DTOs with counts
+        List<apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightReminderResponseDTO> res = candidates.stream()
+            .map(f -> {
+                    Long paid = bookingRepository.findByFlightIdAndIsDeleted(f.getId(), false).stream()
+                    .filter(b -> b.getStatus() != null && b.getStatus() == 2)
+                    .count();
+                    Long unpaid = bookingRepository.findByFlightIdAndIsDeleted(f.getId(), false).stream()
+                    .filter(b -> b.getStatus() != null && b.getStatus() == 1)
+                    .count();
+
+                String airlineName = null;
+                if (f.getAirlineId() != null) {
+                var a = airlineRepository.findById(f.getAirlineId()).orElse(null);
+                if (a != null) airlineName = a.getName();
+                }
+
+                long remainingMinutes = java.time.Duration.between(now, f.getDepartureTime()).toMinutes();
+
+                return apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightReminderResponseDTO.builder()
+                    .flightNumber(f.getId())
+                    .airline(airlineName)
+                    .origin(f.getOriginAirportCode())
+                    .destination(f.getDestinationAirportCode())
+                    .departureTime(f.getDepartureTime())
+                    .remainingTimeMinutes(remainingMinutes)
+                    .status(f.getStatus())
+                    .totalPaidBookings(paid)
+                    .totalUnpaidBookings(unpaid)
+                    .build();
+            })
+            .sorted(java.util.Comparator.comparing(apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightReminderResponseDTO::getDepartureTime))
+            .collect(Collectors.toList());
+
+        return res;
+        }
+
+    
 
     @Override
     @Transactional
@@ -176,7 +256,7 @@ public class FlightRestServiceImpl implements FlightRestService {
 
     @Override
     public List<FlightResponseDTO> getAllFlightsWithFilters(String originAirportCode, String destinationAirportCode,
-                                                          String airlineId, Integer status, Boolean includeDeleted) {
+                                                          String airlineId, Integer status, Boolean includeDeleted, String search) {
         List<Flight> flights;
 
         if (includeDeleted != null && includeDeleted) {
@@ -215,20 +295,42 @@ public class FlightRestServiceImpl implements FlightRestService {
                     .toList();
         }
 
+        // Search by flight id (flight number) or airline name (case-insensitive)
+        if (search != null && !search.trim().isEmpty()) {
+            String s = search.trim().toLowerCase();
+            flights = flights.stream()
+                    .filter(f -> {
+                        if (f.getId() != null && f.getId().toLowerCase().contains(s)) return true;
+                        var airline = airlineRepository.findById(f.getAirlineId()).orElse(null);
+                        if (airline != null && airline.getName() != null && airline.getName().toLowerCase().contains(s)) return true;
+                        return false;
+                    })
+                    .toList();
+        }
+
         // Sort by departure time ascending
         flights = flights.stream()
                 .sorted((f1, f2) -> f1.getDepartureTime().compareTo(f2.getDepartureTime()))
                 .toList();
 
         return flights.stream()
-                .map(this::convertToFlightResponseDTO)
-                .collect(Collectors.toList());
+            .map(this::convertToFlightResponseDTO)
+            .collect(Collectors.toList());
+    }
+
+    @Override
+    public long getActiveFlightsTodayCount() {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        return flightRepository.findByIsDeleted(false).stream()
+                .filter(f -> f.getStatus() != null && (f.getStatus() == 1 || f.getStatus() == 2))
+                .filter(f -> f.getDepartureTime() != null && f.getDepartureTime().toLocalDate().isEqual(today))
+                .count();
     }
 
     @Override
     public FlightResponseDTO getFlightDetail(String id) {
         Flight flight = flightRepository.findById(id).orElse(null);
-        if (flight == null) {
+        if (flight == null || flight.getIsDeleted()) {
             return null;
         }
 
@@ -389,6 +491,21 @@ public class FlightRestServiceImpl implements FlightRestService {
     private FlightResponseDTO convertToFlightResponseDTO(Flight flight) {
         // Get class flights for this flight
         List<ClassFlightResponseDTO> classFlights = classFlightRestService.getClassFlightsByFlight(flight.getId());
+        // compute duration in minutes
+        Long duration = null;
+        if (flight.getDepartureTime() != null && flight.getArrivalTime() != null) {
+            duration = java.time.Duration.between(flight.getDepartureTime(), flight.getArrivalTime()).toMinutes();
+        }
+
+        // fetch airport details if available
+        apap.ti._5.flight_2306211660_be.restdto.response.airport.AirportResponseDTO origin = null;
+        apap.ti._5.flight_2306211660_be.restdto.response.airport.AirportResponseDTO destination = null;
+        try {
+            if (flight.getOriginAirportCode() != null) origin = airportRestService.getAirport(flight.getOriginAirportCode());
+        } catch (Exception ignored) {}
+        try {
+            if (flight.getDestinationAirportCode() != null) destination = airportRestService.getAirport(flight.getDestinationAirportCode());
+        } catch (Exception ignored) {}
 
         return FlightResponseDTO.builder()
                 .id(flight.getId())
@@ -406,6 +523,9 @@ public class FlightRestServiceImpl implements FlightRestService {
                 .createdAt(flight.getCreatedAt())
                 .updatedAt(flight.getUpdatedAt())
                 .isDeleted(flight.getIsDeleted())
+                .durationMinutes(duration)
+                .originAirport(origin)
+                .destinationAirport(destination)
                 .classes(classFlights)
                 .build();
     }
@@ -416,6 +536,15 @@ public class FlightRestServiceImpl implements FlightRestService {
                 .stream()
                 .map(cf -> classFlightRestService.getClassFlightDetail(cf.getId()))
                 .toList();
+        Long duration = null;
+        if (flight.getDepartureTime() != null && flight.getArrivalTime() != null) {
+            duration = java.time.Duration.between(flight.getDepartureTime(), flight.getArrivalTime()).toMinutes();
+        }
+
+        apap.ti._5.flight_2306211660_be.restdto.response.airport.AirportResponseDTO origin = null;
+        apap.ti._5.flight_2306211660_be.restdto.response.airport.AirportResponseDTO destination = null;
+        try { if (flight.getOriginAirportCode() != null) origin = airportRestService.getAirport(flight.getOriginAirportCode()); } catch (Exception ignored) {}
+        try { if (flight.getDestinationAirportCode() != null) destination = airportRestService.getAirport(flight.getDestinationAirportCode()); } catch (Exception ignored) {}
 
         return FlightResponseDTO.builder()
                 .id(flight.getId())
@@ -433,6 +562,9 @@ public class FlightRestServiceImpl implements FlightRestService {
                 .createdAt(flight.getCreatedAt())
                 .updatedAt(flight.getUpdatedAt())
                 .isDeleted(flight.getIsDeleted())
+            .durationMinutes(duration)
+            .originAirport(origin)
+            .destinationAirport(destination)
                 .classes(classFlights)
                 .build();
     }

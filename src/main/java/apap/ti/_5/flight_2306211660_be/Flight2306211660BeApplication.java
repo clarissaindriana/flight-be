@@ -12,13 +12,8 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.Bean;
 
-import java.time.LocalDate;
-
-import com.github.javafaker.Faker;
-
 import apap.ti._5.flight_2306211660_be.restdto.request.airline.AddAirlineRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.airport.AddAirportRequestDTO;
-import apap.ti._5.flight_2306211660_be.restdto.request.passenger.AddPassengerRequestDTO;
 import apap.ti._5.flight_2306211660_be.restservice.airline.AirlineRestService;
 import apap.ti._5.flight_2306211660_be.restservice.airport.AirportRestService;
 import apap.ti._5.flight_2306211660_be.restservice.passenger.PassengerRestService;
@@ -196,41 +191,7 @@ public class Flight2306211660BeApplication {
 				System.err.println("Failed to fetch airports data: " + e.getMessage());
 			}
 
-			// Generate dummy passengers
-			System.out.println("Generating 50 dummy passengers...");
-
-			Faker faker = new Faker();
-			int passengerCreatedCount = 0;
-			int passengerFailedCount = 0;
-
-			for (int i = 0; i < 50; i++) {
-				try {
-					String fullName = faker.name().fullName();
-					LocalDate birthDate = LocalDate.of(
-						faker.number().numberBetween(1950, 2005),
-						faker.number().numberBetween(1, 12),
-						faker.number().numberBetween(1, 28)
-					);
-					int gender = faker.bool().bool() ? 1 : 2; // 1=Male, 2=Female
-					String idPassport = faker.bothify("??########", true).toUpperCase(); // e.g., AB12345678
-
-					AddPassengerRequestDTO passengerDto = AddPassengerRequestDTO.builder()
-							.fullName(fullName)
-							.birthDate(birthDate)
-							.gender(gender)
-							.idPassport(idPassport)
-							.build();
-
-					passengerRestService.createPassenger(passengerDto);
-					passengerCreatedCount++;
-
-				} catch (Exception e) {
-					passengerFailedCount++;
-					System.out.println("Failed to create passenger " + (i + 1) + ": " + e.getMessage());
-				}
-			}
-
-			System.out.println("Dummy passengers generation complete. Created: " + passengerCreatedCount + ", Failed: " + passengerFailedCount);
+			// Passenger data will be synchronized from the profile microservice via /api/users/customers
 		};
 	}
 }

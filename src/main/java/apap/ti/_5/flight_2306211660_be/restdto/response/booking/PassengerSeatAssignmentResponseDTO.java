@@ -15,4 +15,5 @@ public class PassengerSeatAssignmentResponseDTO {
     private UUID passengerId;
     private Integer seatId;
     private String seatCode;
+    private String passengerName;
 }
