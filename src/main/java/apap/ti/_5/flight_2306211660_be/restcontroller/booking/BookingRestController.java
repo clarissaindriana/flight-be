@@ -19,11 +19,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 import org.springframework.beans.factory.annotation.Autowired;
+import apap.ti._5.flight_2306211660_be.config.security.CurrentUser;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api")
@@ -41,6 +43,7 @@ public class BookingRestController {
     public static final String DELETE_BOOKING = BASE_URL + "/delete/{id}";
 
     @GetMapping(BASE_URL)
+    @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN','FLIGHT_AIRLINE')")
     public ResponseEntity<BaseResponseDTO<List<BookingResponseDTO>>> getAllBookings(
             @RequestParam(required = false) String flightId,
             @RequestParam(required = false) Boolean includeDeleted) {
@@ -55,6 +58,19 @@ public class BookingRestController {
             bookings = bookingRestService.getAllBookings(includeDeleted);
         }
 
+        // Ownership enforcement: if current user is CUSTOMER, only return bookings with contactEmail == user's email
+        String role = CurrentUser.getRole();
+        if (role != null && role.contains("ROLE_CUSTOMER")) {
+            String email = CurrentUser.getEmail();
+            if (email != null) {
+                bookings = bookings.stream()
+                        .filter(b -> email.equalsIgnoreCase(b.getContactEmail()))
+                        .toList();
+            } else {
+                bookings = List.of();
+            }
+        }
+
         baseResponseDTO.setStatus(HttpStatus.OK.value());
         baseResponseDTO.setData(bookings);
         baseResponseDTO.setMessage("Data Booking Berhasil Ditemukan");
@@ -63,6 +79,7 @@ public class BookingRestController {
     }
 
     @GetMapping(VIEW_BOOKING)
+    @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN')")
     public ResponseEntity<BaseResponseDTO<BookingResponseDTO>> getBooking(@PathVariable String id) {
         var baseResponseDTO = new BaseResponseDTO<BookingResponseDTO>();
 
@@ -74,6 +91,18 @@ public class BookingRestController {
             baseResponseDTO.setTimestamp(new Date());
             return new ResponseEntity<>(baseResponseDTO, HttpStatus.NOT_FOUND);
         }
+
+        // If customer, enforce ownership
+        String role = CurrentUser.getRole();
+        if (role != null && role.contains("ROLE_CUSTOMER")) {
+            String email = CurrentUser.getEmail();
+            if (email == null || !email.equalsIgnoreCase(booking.getContactEmail())) {
+                baseResponseDTO.setStatus(HttpStatus.FORBIDDEN.value());
+                baseResponseDTO.setMessage("Access denied");
+                baseResponseDTO.setTimestamp(new Date());
+                return new ResponseEntity<>(baseResponseDTO, HttpStatus.FORBIDDEN);
+            }
+        }
         baseResponseDTO.setStatus(HttpStatus.OK.value());
         baseResponseDTO.setData(booking);
         baseResponseDTO.setMessage("Data Booking Berhasil Ditemukan");
@@ -82,6 +111,7 @@ public class BookingRestController {
     }
 
     @PostMapping(CREATE_BOOKING)
+    @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN')")
     public ResponseEntity<BaseResponseDTO<BookingResponseDTO>> createBooking(
             @Valid @RequestBody AddBookingRequestDTO addBookingRequestDTO,
             BindingResult bindingResult) {
@@ -102,6 +132,14 @@ public class BookingRestController {
         }
 
         try {
+            // If customer, force contactEmail to current user's email
+            String role = CurrentUser.getRole();
+            if (role != null && role.contains("ROLE_CUSTOMER")) {
+                String email = CurrentUser.getEmail();
+                if (email != null) {
+                    addBookingRequestDTO.setContactEmail(email);
+                }
+            }
             BookingResponseDTO booking = bookingRestService.createBooking(addBookingRequestDTO);
 
             baseResponseDTO.setStatus(HttpStatus.CREATED.value());
@@ -124,6 +162,7 @@ public class BookingRestController {
     }
 
     @PutMapping(UPDATE_BOOKING)
+    @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN')")
     public ResponseEntity<BaseResponseDTO<BookingResponseDTO>> updateBooking(
             @Valid @RequestBody UpdateBookingRequestDTO updateBookingRequestDTO,
             BindingResult bindingResult) {
@@ -145,6 +184,27 @@ public class BookingRestController {
         }
 
         try {
+            // If customer, ensure ownership before updating
+            String role = CurrentUser.getRole();
+            if (role != null && role.contains("ROLE_CUSTOMER")) {
+                String email = CurrentUser.getEmail();
+                BookingResponseDTO existing = bookingRestService.getBooking(updateBookingRequestDTO.getId());
+                if (existing == null) {
+                    var base = new BaseResponseDTO<BookingResponseDTO>();
+                    base.setStatus(HttpStatus.NOT_FOUND.value());
+                    base.setMessage("Booking Tidak Ditemukan");
+                    base.setTimestamp(new Date());
+                    return new ResponseEntity<>(base, HttpStatus.NOT_FOUND);
+                }
+                if (email == null || !email.equalsIgnoreCase(existing.getContactEmail())) {
+                    var base = new BaseResponseDTO<BookingResponseDTO>();
+                    base.setStatus(HttpStatus.FORBIDDEN.value());
+                    base.setMessage("Access denied");
+                    base.setTimestamp(new Date());
+                    return new ResponseEntity<>(base, HttpStatus.FORBIDDEN);
+                }
+            }
+
             BookingResponseDTO booking = bookingRestService.updateBooking(updateBookingRequestDTO);
 
             if (booking == null) {
@@ -176,6 +236,7 @@ public class BookingRestController {
     
     // GET /api/booking/statistics?start=YYYY-MM-DD&end=YYYY-MM-DD
     @GetMapping(BASE_URL + "/statistics")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
     public ResponseEntity<BaseResponseDTO<List<Map<String, Object>>>> getBookingStatistics(
             @RequestParam String start,
             @RequestParam String end) {
@@ -227,12 +288,51 @@ public class BookingRestController {
         }
     }
 
+    @GetMapping(BASE_URL + "/today")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
+    public ResponseEntity<BaseResponseDTO<Long>> getTodayBookings() {
+        var base = new BaseResponseDTO<Long>();
+        try {
+            long total = bookingRestService.getTodayBookings();
+            base.setStatus(HttpStatus.OK.value());
+            base.setMessage("Total bookings today retrieved");
+            base.setData(total);
+            base.setTimestamp(new Date());
+            return ResponseEntity.ok(base);
+        } catch (Exception ex) {
+            base.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            base.setMessage("Error: " + ex.getMessage());
+            base.setTimestamp(new Date());
+            return new ResponseEntity<>(base, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
     @PostMapping(DELETE_BOOKING)
+    @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN')")
     public ResponseEntity<BaseResponseDTO<BookingResponseDTO>> deleteBooking(
             @PathVariable String id) {
         var baseResponseDTO = new BaseResponseDTO<BookingResponseDTO>();
 
         try {
+            // If customer, ensure ownership before deleting
+            String role = CurrentUser.getRole();
+            if (role != null && role.contains("ROLE_CUSTOMER")) {
+                String email = CurrentUser.getEmail();
+                BookingResponseDTO existing = bookingRestService.getBooking(id);
+                if (existing == null) {
+                    baseResponseDTO.setStatus(HttpStatus.NOT_FOUND.value());
+                    baseResponseDTO.setMessage("Booking Tidak Ditemukan");
+                    baseResponseDTO.setTimestamp(new Date());
+                    return new ResponseEntity<>(baseResponseDTO, HttpStatus.NOT_FOUND);
+                }
+                if (email == null || !email.equalsIgnoreCase(existing.getContactEmail())) {
+                    baseResponseDTO.setStatus(HttpStatus.FORBIDDEN.value());
+                    baseResponseDTO.setMessage("Access denied");
+                    baseResponseDTO.setTimestamp(new Date());
+                    return new ResponseEntity<>(baseResponseDTO, HttpStatus.FORBIDDEN);
+                }
+            }
+
             BookingResponseDTO booking = bookingRestService.deleteBooking(id);
 
             if (booking == null) {

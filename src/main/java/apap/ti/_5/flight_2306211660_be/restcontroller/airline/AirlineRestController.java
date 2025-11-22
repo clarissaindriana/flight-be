@@ -15,6 +15,7 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.*;
 import java.util.Date;
 import java.util.List;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 @RestController
 @RequestMapping("/api")
@@ -66,6 +67,25 @@ public class AirlineRestController {
         baseResponseDTO.setMessage("Data Airline Berhasil Ditemukan");
         baseResponseDTO.setTimestamp(new Date());
         return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
+    }
+
+    @GetMapping(BASE_URL + "/total")
+    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
+    public ResponseEntity<BaseResponseDTO<Long>> getTotalAirlines() {
+        var base = new BaseResponseDTO<Long>();
+        try {
+            long total = airlineRestService.getTotalAirlines();
+            base.setStatus(HttpStatus.OK.value());
+            base.setMessage("Total airlines retrieved");
+            base.setData(total);
+            base.setTimestamp(new Date());
+            return ResponseEntity.ok(base);
+        } catch (Exception ex) {
+            base.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            base.setMessage("Error: " + ex.getMessage());
+            base.setTimestamp(new Date());
+            return new ResponseEntity<>(base, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 
     @PostMapping(CREATE_AIRLINE)

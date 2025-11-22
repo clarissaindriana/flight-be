@@ -13,6 +13,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.security.access.prepost.PreAuthorize;
 import java.util.Date;
 import java.util.List;
 
@@ -30,6 +31,7 @@ public class FlightRestController {
     public static final String DELETE_FLIGHT = BASE_URL + "/delete/{id}";
 
     @GetMapping(ALL_FLIGHTS)
+    @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN','FLIGHT_AIRLINE')")
     public ResponseEntity<BaseResponseDTO<List<FlightResponseDTO>>> getAllFlights(
             @RequestParam(required = false) String originAirportCode,
             @RequestParam(required = false) String destinationAirportCode,
@@ -57,6 +59,7 @@ public class FlightRestController {
     }
 
     @GetMapping(VIEW_FLIGHT)
+    @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN','FLIGHT_AIRLINE')")
     public ResponseEntity<BaseResponseDTO<FlightResponseDTO>> getFlight(@PathVariable String id) {
         var baseResponseDTO = new BaseResponseDTO<FlightResponseDTO>();
 
@@ -76,6 +79,7 @@ public class FlightRestController {
     }
 
     @PostMapping(CREATE_FLIGHT)
+    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
     public ResponseEntity<BaseResponseDTO<FlightResponseDTO>> createFlight(
             @Valid @RequestBody AddFlightRequestDTO addFlightRequestDTO,
             BindingResult bindingResult) {
@@ -118,6 +122,7 @@ public class FlightRestController {
     }
 
     @PutMapping(UPDATE_FLIGHT)
+    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
     public ResponseEntity<BaseResponseDTO<FlightResponseDTO>> updateFlight(
             @Valid @RequestBody UpdateFlightRequestDTO updateFlightRequestDTO,
             BindingResult bindingResult) {
@@ -168,6 +173,7 @@ public class FlightRestController {
     }
 
     @PostMapping(DELETE_FLIGHT)
+    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE')")
     public ResponseEntity<BaseResponseDTO<FlightResponseDTO>> deleteFlight(
             @PathVariable String id) {
         var baseResponseDTO = new BaseResponseDTO<FlightResponseDTO>();

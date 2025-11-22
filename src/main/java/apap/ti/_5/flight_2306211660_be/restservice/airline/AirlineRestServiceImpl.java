@@ -93,6 +93,13 @@ public class AirlineRestServiceImpl implements AirlineRestService {
         return convertToAirlineResponseDTO(airlineRepository.save(airline));
     }
 
+    @Override
+    public long getTotalAirlines() {
+        // airlineRepository is configured with @Where to exclude soft-deleted entries,
+        // so count() returns active airlines only.
+        return airlineRepository.count();
+    }
+
     private AirlineResponseDTO convertToAirlineResponseDTO(Airline airline) {
         return AirlineResponseDTO.builder()
                 .id(airline.getId())

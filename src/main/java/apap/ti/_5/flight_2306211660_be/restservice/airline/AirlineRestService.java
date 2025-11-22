@@ -13,4 +13,7 @@ public interface AirlineRestService {
     AirlineResponseDTO getAirline(String id);
     AirlineResponseDTO updateAirline(UpdateAirlineRequestDTO dto);
     AirlineResponseDTO deleteAirline(String id);
+
+    // Count active (not soft-deleted) airlines
+    long getTotalAirlines();
 }

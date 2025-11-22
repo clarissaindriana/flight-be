@@ -27,4 +27,7 @@ public interface BookingRestService {
     BookingResponseDTO updateBooking(UpdateBookingRequestDTO dto);
 
     BookingResponseDTO deleteBooking(String id);
+
+    // Count bookings created today (isDeleted = FALSE)
+    long getTodayBookings();
 }

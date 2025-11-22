@@ -451,6 +451,14 @@ public class BookingRestServiceImpl implements BookingRestService {
         return convertToBookingResponseDTO(booking);
     }
 
+    @Override
+    public long getTodayBookings() {
+        java.time.LocalDate today = java.time.LocalDate.now();
+        return bookingRepository.findByIsDeleted(false).stream()
+                .filter(b -> b.getCreatedAt() != null && b.getCreatedAt().toLocalDate().isEqual(today))
+                .count();
+    }
+
     private String generateBookingCode(String flightId) {
         String prefix = flightId + "-" +
                        flightRepository.findById(flightId).get().getOriginAirportCode() + "-" +
