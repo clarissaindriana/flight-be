@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: 2306211660-flight-be-service
+  name: flight-2306211660-be-service
   namespace: default
 spec:
   selector:

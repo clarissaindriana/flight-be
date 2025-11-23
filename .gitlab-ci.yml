@@ -56,12 +56,12 @@ deploy:
     - chmod 600 ~/.ssh/id_rsa
     - ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
   script:
-    - echo "Generating Kubernetes ConfigMap & Secret for 2306211660-flight-be..."
+    - echo "Generating Kubernetes ConfigMap & Secret for flight-2306211660-be..."
     - |
-      printf "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: 2306211660-flight-be-config\n  namespace: default\ndata:\n  DATABASE_URL_PROD: \"%s\"\n  DATABASE_USERNAME: \"%s\"\n" \
+      printf "apiVersion: v1\nkind: ConfigMap\nmetadata:\n  name: flight-2306211660-be-config\n  namespace: default\ndata:\n  DATABASE_URL_PROD: \"%s\"\n  DATABASE_USERNAME: \"%s\"\n" \
       "$DATABASE_URL_PROD" "$DATABASE_USERNAME" > configmap.yaml
     - |
-      printf "apiVersion: v1\nkind: Secret\nmetadata:\n  name: 2306211660-flight-be-secret\n  namespace: default\ntype: Opaque\nstringData:\n  DATABASE_PASSWORD: \"%s\"\n" \
+      printf "apiVersion: v1\nkind: Secret\nmetadata:\n  name: flight-2306211660-be-secret\n  namespace: default\ntype: Opaque\nstringData:\n  DATABASE_PASSWORD: \"%s\"\n" \
       "$DATABASE_PASSWORD" > secret.yaml
     - sed "s|REPLACE_ME_TAG|$IMAGE_TAG|g" k8s/deployment.yaml > deployment.yaml
     - echo "Deploying to EC2 Kubernetes cluster..."
@@ -74,6 +74,6 @@ deploy:
         sudo k3s kubectl apply -f ~/app/2306211660-flight-be/k8s/deployment.yaml &&
         sudo k3s kubectl apply -f ~/app/2306211660-flight-be/k8s/service.yaml &&
         sudo k3s kubectl apply -f ~/app/2306211660-flight-be/k8s/ingress.yaml &&
-        sudo k3s kubectl rollout status deployment/2306211660-flight-be -n default --timeout=5m
+        sudo k3s kubectl rollout status deployment/flight-2306211660-be -n default --timeout=5m
       "
     - echo "Deployment completed successfully!"

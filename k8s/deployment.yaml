@@ -1,7 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: 2306211660-flight-be
+  name: flight-2306211660-be
   namespace: default
 spec:
   replicas: 1
@@ -24,17 +24,17 @@ spec:
             - name: DATABASE_URL_PROD
               valueFrom:
                 configMapKeyRef:
-                  name: 2306211660-flight-be-config
+                  name: flight-2306211660-be-config
                   key: DATABASE_URL_PROD
             - name: DATABASE_USERNAME
               valueFrom:
                 configMapKeyRef:
-                  name: 2306211660-flight-be-config
+                  name: flight-2306211660-be-config
                   key: DATABASE_USERNAME
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: 2306211660-flight-be-secret
+                  name: flight-2306211660-be-secret
                   key: DATABASE_PASSWORD
             - name: PROFILE_SERVICE_BASE_URL
               value: "https://2306219575-be.hafizmuh.site"
