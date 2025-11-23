@@ -3,15 +3,19 @@ FROM gradle:8.5-jdk21 AS build
 
 WORKDIR /app
 
-# Copy gradle files
+# Copy only gradle wrapper and build config to leverage Docker layer caching
+COPY gradlew .
+COPY gradle gradle/
 COPY build.gradle settings.gradle ./
-COPY gradle ./gradle
+
+# Pre-download dependencies (this layer will be cached)
+RUN ./gradlew build -x test --dry-run 2>/dev/null || true
 
 # Copy source code
 COPY src ./src
 
 # Build the application
-RUN gradle clean build -x test --no-daemon
+RUN ./gradlew clean build -x test --no-daemon
 
 # Stage 2: Run
 FROM eclipse-temurin:21-jre-alpine
