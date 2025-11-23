@@ -1,5 +1,10 @@
 1. ![alt text](<No-1-P09.png>)
 ![alt text](<No-1.1-P09.png>)
+
+2. ![alt text](<No-2-P09.png>)
+
+3. ![alt text](<No-3-P09.png>)
+
 4. EC2 instance perlu dikaitkan dengan Elastic IP agar memiliki static public IP address yang tidak berubah saat instance stop/start. Tanpa Elastic IP, setiap kali instance direstart, akan diberikan dynamic public IP baru sehingga domain, server config, atau external access yang sudah diarahkan ke IP sebelumnya akan gagal. Elastic IP memastikan akses tetap konsisten terutama untuk deployment aplikasi yang harus selalu reachable.
 5. Pada praktikum ini, Docker digunakan untuk melakukan containerization, yaitu membungkus aplikasi dan dependency agar bisa dijalankan secara konsisten di berbagai environment. Sementara Kubernetes digunakan sebagai orchestrator, yang mengatur scaling, self-healing, rollout & rollback, serta service networking. Intinya: Docker menjalankan container, Kubernetes mengelola container dalam cluster environment.
 6. Proses paling penting dalam keseluruhan pipeline adalah Continuous Deployment step, yaitu otomatisasi deploy ke server setiap ada perubahan pada source code. Ini penting karena memastikan aplikasi selalu up-to-date, mengurangi human error, mempercepat delivery, dan mendukung konsep DevOps “release early, release often”.
