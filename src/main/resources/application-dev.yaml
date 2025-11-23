@@ -5,8 +5,30 @@ spring:
     url: ${DATABASE_URL_DEV}
     username: ${DEV_USERNAME}
     password: ${DEV_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    properties:
+      hibernate:
+        '[format_sql]': true
 
-# External profile microservice base URL (can be overridden in .env.properties)
+# External services configuration
 profile:
   service:
     base-url: ${PROFILE_SERVICE_BASE_URL:https://2306219575-be.hafizmuh.site}
+
+# Logging configuration for development
+logging:
+  level:
+    root: INFO
+    '[apap.ti._5.flight_2306211660_be]': DEBUG
+    '[org.springframework.web]': DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Server configuration
+server:
+  servlet:
+    context-path: /
+

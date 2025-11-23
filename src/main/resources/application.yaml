@@ -6,7 +6,7 @@ spring:
       filter:
         enabled: true
   profiles:
-    active: 'dev'
+    active: 'dev'  # Change to 'prod' for production deployment
   jpa:
     hibernate:
       ddl-auto: create-drop

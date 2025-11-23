@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 2306211660-flight-be
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: 2306211660-flight-be
+  template:
+    metadata:
+      labels:
+        app: 2306211660-flight-be
+    spec:
+      containers:
+        - name: springboot-container
+          image: clarissaindriana/2306211660-be:REPLACE_ME_TAG
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_PROFILES_ACTIVE
+              value: "prod"
+            - name: DATABASE_URL_PROD
+              valueFrom:
+                configMapKeyRef:
+                  name: 2306211660-flight-be-config
+                  key: DATABASE_URL_PROD
+            - name: DATABASE_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: 2306211660-flight-be-config
+                  key: DATABASE_USERNAME
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: 2306211660-flight-be-secret
+                  key: DATABASE_PASSWORD
+            - name: PROFILE_SERVICE_BASE_URL
+              value: "https://2306219575-be.hafizmuh.site"

@@ -1,0 +1,37 @@
+spring:
+  config:
+    import: optional:file:.env.properties
+  datasource:
+    url: ${DATABASE_URL_PROD}
+    username: ${DATABASE_USERNAME}
+    password: ${DATABASE_PASSWORD}
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+    properties:
+      hibernate:
+        '[format_sql]': false
+  mvc:
+    log-request-details: false
+
+# External services configuration
+profile:
+  service:
+    base-url: ${PROFILE_SERVICE_BASE_URL:https://2306219575-be.hafizmuh.site}
+
+# Logging configuration for production
+logging:
+  level:
+    root: INFO
+    '[apap.ti._5.flight_2306211660_be]': INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+
+# Server configuration
+server:
+  servlet:
+    context-path: /
+  compression:
+    enabled: true
+    min-response-size: 1024

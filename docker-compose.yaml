@@ -1,0 +1,20 @@
+services:
+  flight-db:
+    image: postgres:17.5-alpine
+    container_name: flight-2306211660-db
+    ports:
+      - '35002:5432'
+    
+    restart: unless-stopped
+    
+    environment:
+      - POSTGRES_USER=2306211660-flight-prod
+      - POSTGRES_PASSWORD=CLI-825.2025X
+      - POSTGRES_DB=2306211660-be
+    
+    volumes:
+      - flight-db:/var/lib/postgresql/data
+
+volumes:
+  flight-db:
+    driver: local
