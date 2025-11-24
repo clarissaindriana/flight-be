@@ -1,6 +1,7 @@
 package apap.ti._5.flight_2306211660_be.restcontroller.booking;
 
 import apap.ti._5.flight_2306211660_be.restdto.response.BaseResponseDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingResponseDTO;
@@ -168,7 +169,7 @@ public class BookingRestController {
                 String customerId = CurrentUser.getUserId();
                 if (customerId == null || customerId.isBlank()) customerId = booking.getContactEmail();
 
-                apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO billReq = new apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO();
+                AddBillRequestDTO billReq = new AddBillRequestDTO();
                 billReq.setCustomerId(customerId);
                 billReq.setServiceName("Flight");
                 billReq.setServiceReferenceId(booking.getId());
