@@ -36,5 +36,10 @@ spec:
                 secretKeyRef:
                   name: flight-2306211660-be-secret
                   key: DATABASE_PASSWORD
+            - name: CORS_ALLOWED_ORIGINS
+              valueFrom:
+                secretKeyRef:
+                  name: flight-2306211660-be-secret
+                  key: CORS_ALLOWED_ORIGINS
             - name: PROFILE_SERVICE_BASE_URL
               value: "https://2306219575-be.hafizmuh.site"

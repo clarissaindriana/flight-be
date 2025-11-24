@@ -2,6 +2,7 @@ package apap.ti._5.flight_2306211660_be.restcontroller.bill;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import org.springframework.http.HttpStatus;
@@ -230,7 +231,7 @@ public class BillRestController {
 
     @PostMapping("/{billId}/pay")
     @PreAuthorize("hasAnyRole('CUSTOMER')")
-    public ResponseEntity<BaseResponseDTO<BillResponseDTO>> payBill(@PathVariable UUID billId, @RequestBody(required = false) java.util.Map<String, Object> body) {
+    public ResponseEntity<BaseResponseDTO<BillResponseDTO>> payBill(@PathVariable UUID billId, @RequestBody(required = false) Map<String, Object> body) {
         var base = new BaseResponseDTO<BillResponseDTO>();
         String callerUserId = CurrentUser.getUserId();
         String coupon = null;

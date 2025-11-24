@@ -7,6 +7,7 @@ import apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightResponseDTO
 
 import apap.ti._5.flight_2306211660_be.restservice.flight.FlightRestService;
 import jakarta.validation.Valid;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -14,9 +15,12 @@ import org.springframework.validation.BindingResult;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.security.access.prepost.PreAuthorize;
+
 import java.util.Date;
 import java.util.List;
+
 import apap.ti._5.flight_2306211660_be.config.security.CurrentUser;
+import apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightReminderResponseDTO;
 
 @RestController
 @RequestMapping("/api")
@@ -121,10 +125,10 @@ public class FlightRestController {
             if (role != null && role.contains("ROLE_CUSTOMER")) {
                 // enforce that customer only sees their own flights
                 if (currentUserId == null) {
-                    base.setStatus(org.springframework.http.HttpStatus.FORBIDDEN.value());
+                    base.setStatus(HttpStatus.FORBIDDEN.value());
                     base.setMessage("Access denied");
                     base.setTimestamp(new java.util.Date());
-                    return new ResponseEntity<>(base, org.springframework.http.HttpStatus.FORBIDDEN);
+                    return new ResponseEntity<>(base, HttpStatus.FORBIDDEN);
                 }
                 customerUserId = currentUserId;
             } else {
@@ -133,28 +137,28 @@ public class FlightRestController {
                 }
             }
 
-            java.util.List<apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightReminderResponseDTO> data =
+            List<FlightReminderResponseDTO> data =
                     flightRestService.getFlightReminders(hours, customerUserId);
 
             if (data == null || data.isEmpty()) {
-                base.setStatus(org.springframework.http.HttpStatus.OK.value());
+                base.setStatus(HttpStatus.OK.value());
                 base.setData(java.util.List.of());
                 base.setMessage("No upcoming flights found.");
                 base.setTimestamp(new java.util.Date());
                 return ResponseEntity.ok(base);
             }
 
-            base.setStatus(org.springframework.http.HttpStatus.OK.value());
+            base.setStatus(HttpStatus.OK.value());
             base.setData(data);
             base.setMessage("Upcoming flights retrieved");
             base.setTimestamp(new java.util.Date());
             return ResponseEntity.ok(base);
 
         } catch (Exception ex) {
-            base.setStatus(org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR.value());
+            base.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
             base.setMessage("Error: " + ex.getMessage());
             base.setTimestamp(new java.util.Date());
-            return new ResponseEntity<>(base, org.springframework.http.HttpStatus.INTERNAL_SERVER_ERROR);
+            return new ResponseEntity<>(base, HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }
 

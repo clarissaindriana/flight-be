@@ -3,7 +3,9 @@ package apap.ti._5.flight_2306211660_be.restservice.bill;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -13,6 +15,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.reactive.function.client.WebClient;
 
 import apap.ti._5.flight_2306211660_be.config.security.ProfileClient;
 import apap.ti._5.flight_2306211660_be.model.Bill;
@@ -121,7 +124,7 @@ public class BillRestServiceImpl implements BillRestService {
 
         // Deduct balance
         BigDecimal newBalance = balance.subtract(finalAmount);
-        java.util.Map<String, Object> payload = new java.util.HashMap<>();
+        Map<String, Object> payload = new HashMap<>();
         payload.put("balance", newBalance);
         profileClient.updateUser(customerIdFromToken, payload);
 
@@ -169,9 +172,9 @@ public class BillRestServiceImpl implements BillRestService {
         }
 
         try {
-            org.springframework.web.reactive.function.client.WebClient wc = org.springframework.web.reactive.function.client.WebClient.create(base);
+            WebClient wc = WebClient.create(base);
             String path = "/api/internal/bill-callback"; // standard callback path expected on services
-            java.util.Map<String, Object> payload = new java.util.HashMap<>();
+            Map<String, Object> payload = new HashMap<>();
             payload.put("serviceReferenceId", bill.getServiceReferenceId());
             payload.put("billId", bill.getId().toString());
             payload.put("status", bill.getStatus().name());
