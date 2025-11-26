@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import apap.ti._5.flight_2306211660_be.config.security.CurrentUser;
 import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.bill.ConfirmPaymentRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.BaseResponseDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.bill.BillResponseDTO;
 import apap.ti._5.flight_2306211660_be.restservice.bill.BillRestService;
@@ -32,7 +33,7 @@ public class BillRestController {
     }
 
     @PostMapping("/create")
-    @PreAuthorize("hasAnyRole('SUPERADMIN','FLIGHT_AIRLINE','ACCOMMODATION_OWNER','RENTAL_VENDOR','INSURANCE_PROVIDER','TOUR_PACKAGE_VENDOR')")
+    @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN','FLIGHT_AIRLINE','ACCOMMODATION_OWNER','RENTAL_VENDOR','INSURANCE_PROVIDER','TOUR_PACKAGE_VENDOR')")
     public ResponseEntity<BaseResponseDTO<BillResponseDTO>> createBill(@Valid @RequestBody AddBillRequestDTO req) {
         var base = new BaseResponseDTO<BillResponseDTO>();
         try {
@@ -229,22 +230,28 @@ public class BillRestController {
         return ResponseEntity.ok(base);
     }
 
-    @PostMapping("/{billId}/pay")
+    @PostMapping("/pay")
     @PreAuthorize("hasAnyRole('CUSTOMER')")
-    public ResponseEntity<BaseResponseDTO<BillResponseDTO>> payBill(@PathVariable UUID billId, @RequestBody(required = false) Map<String, Object> body) {
+    public ResponseEntity<BaseResponseDTO<BillResponseDTO>> payBill(@RequestBody ConfirmPaymentRequestDTO req) {
         var base = new BaseResponseDTO<BillResponseDTO>();
         String callerUserId = CurrentUser.getUserId();
-        String coupon = null;
-        if (body != null && body.containsKey("couponCode")) coupon = String.valueOf(body.get("couponCode"));
+        UUID billId = req.getBillId();
+        String customerId = req.getCustomerId();
+        String coupon = null; // TODO: Fetch coupon from loyalty service
 
         try {
+            // Validate customerId from request matches JWT token
+            if (!customerId.equals(callerUserId)) {
+                throw new SecurityException("Customer ID mismatch");
+            }
+
             // Validate customerId from JWT matches bill's customerId (early check)
             Bill bill = billService.getBillById(billId);
             if (bill == null) throw new IllegalArgumentException("No Bill Found");
             if (!bill.getCustomerId().equals(callerUserId)) {
                 throw new SecurityException("Customer ID mismatch");
             }
-            
+
             Bill paid = billService.payBill(billId, callerUserId, coupon);
             base.setStatus(HttpStatus.OK.value());
             base.setMessage("Payment successful");

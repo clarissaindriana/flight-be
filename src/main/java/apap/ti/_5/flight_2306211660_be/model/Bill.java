@@ -47,7 +47,8 @@ public class Bill {
     @Column(nullable = false)
     private BillStatus status;
 
-    // dueDate removed: not used in business logic per requirements
+    @Column(name = "due_date", nullable = false)
+    private LocalDateTime dueDate;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
