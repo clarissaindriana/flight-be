@@ -1,5 +1,7 @@
 package apap.ti._5.flight_2306211660_be.config.security;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -10,6 +12,8 @@ import reactor.core.publisher.Mono;
 
 @Component
 public class ProfileClient {
+
+    private static final Logger logger = LoggerFactory.getLogger(ProfileClient.class);
 
     private final WebClient webClient;
 
@@ -52,13 +56,27 @@ public class ProfileClient {
                     .uri("/api/auth/login")
                     .bodyValue(req)
                     .retrieve()
-                    .bodyToMono(LoginWrapper.class)
-                    .onErrorReturn(null);
+                    .onStatus(
+                        status -> !status.is2xxSuccessful(),
+                        clientResponse -> clientResponse.bodyToMono(String.class).flatMap(body -> {
+                            logger.error("Profile login HTTP error: status={}, body={}", clientResponse.statusCode(), body);
+                            return Mono.error(new RuntimeException("Profile login HTTP " + clientResponse.statusCode()));
+                        })
+                    )
+                    .bodyToMono(LoginWrapper.class);
 
             LoginWrapper wrapper = mono.block();
-            if (wrapper == null) return null;
+            if (wrapper == null) {
+                logger.error("Profile login: wrapper is null");
+                return null;
+            }
+            if (wrapper.getData() == null || wrapper.getData().getToken() == null) {
+                logger.error("Profile login: missing data/token. status={}, message={}", wrapper.getStatus(), wrapper.getMessage());
+                return null;
+            }
             return wrapper.getData();
         } catch (Exception ex) {
+            logger.error("Profile login exception: {}", ex.getMessage(), ex);
             return null;
         }
     }
@@ -78,6 +96,10 @@ public class ProfileClient {
         private String message;
         private LoginResponse data;
 
+        public Integer getStatus() { return status; }
+        public void setStatus(Integer status) { this.status = status; }
+        public String getMessage() { return message; }
+        public void setMessage(String message) { this.message = message; }
         public LoginResponse getData() { return data; }
         public void setData(LoginResponse data) { this.data = data; }
     }
