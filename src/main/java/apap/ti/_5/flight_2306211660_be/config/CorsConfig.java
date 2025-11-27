@@ -19,7 +19,7 @@ public class CorsConfig {
             public void addCorsMappings(CorsRegistry registry) {
                 String[] origins = allowedOrigins.split(",");
                 
-                // Trim whitespace from each origin
+
                 for (int i = 0; i < origins.length; i++) {
                     origins[i] = origins[i].trim();
                 }
