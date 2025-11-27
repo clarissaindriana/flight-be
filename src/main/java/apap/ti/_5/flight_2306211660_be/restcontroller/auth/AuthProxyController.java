@@ -35,7 +35,7 @@ public class AuthProxyController {
             
             // Create LoginRequest for profile service
             ProfileClient.LoginRequest req = new ProfileClient.LoginRequest();
-            req.setUsername(username);
+            req.setEmail(username);  // username variable contains the email value
             req.setPassword(password);
             
             ProfileClient.LoginResponse lr = profileClient.login(req);
