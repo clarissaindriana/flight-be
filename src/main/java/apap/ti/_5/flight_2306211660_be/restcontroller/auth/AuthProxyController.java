@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.Date;
+import java.util.Map;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -18,9 +19,25 @@ public class AuthProxyController {
     private ProfileClient profileClient;
 
     @PostMapping("/login")
-    public ResponseEntity<BaseResponseDTO<ProfileClient.LoginResponse>> login(@RequestBody ProfileClient.LoginRequest req, HttpServletResponse response) {
+    public ResponseEntity<BaseResponseDTO<ProfileClient.LoginResponse>> login(@RequestBody Map<String, String> loginData, HttpServletResponse response) {
         var base = new BaseResponseDTO<ProfileClient.LoginResponse>();
         try {
+            // Convert email to username for profile service
+            String username = loginData.get("email");
+            String password = loginData.get("password");
+            
+            if (username == null || password == null) {
+                base.setStatus(HttpStatus.BAD_REQUEST.value());
+                base.setMessage("Email and password are required");
+                base.setTimestamp(new Date());
+                return new ResponseEntity<>(base, HttpStatus.BAD_REQUEST);
+            }
+            
+            // Create LoginRequest for profile service
+            ProfileClient.LoginRequest req = new ProfileClient.LoginRequest();
+            req.setUsername(username);
+            req.setPassword(password);
+            
             ProfileClient.LoginResponse lr = profileClient.login(req);
             if (lr == null || lr.getToken() == null) {
                 base.setStatus(HttpStatus.UNAUTHORIZED.value());
@@ -34,7 +51,7 @@ public class AuthProxyController {
             response.addHeader("Set-Cookie", cookie);
 
             base.setStatus(HttpStatus.OK.value());
-            base.setMessage("Logged in (proxied)");
+            base.setMessage("User logged in successfully");
             base.setData(lr);
             base.setTimestamp(new Date());
             return ResponseEntity.ok(base);
