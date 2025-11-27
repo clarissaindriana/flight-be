@@ -13,7 +13,7 @@ public class ProfileClient {
 
     private final WebClient webClient;
 
-    public ProfileClient(@Value("${profile.service.base-url:https://2306219575-be.hafizmuh.site}") String baseUrl) {
+    public ProfileClient(@Value("${profile.service.base-url:http://2306219575-be.hafizmuh.site}") String baseUrl) {
         this.webClient = WebClient.builder()
                 .baseUrl(baseUrl)
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
