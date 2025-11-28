@@ -1,5 +1,7 @@
 package apap.ti._5.flight_2306211660_be.config.security;
 
+import java.time.Duration;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -27,28 +29,39 @@ public class ProfileClient {
     /**
      * Validate token by calling external profile microservice /api/auth/validate-token.
      * If token is null or empty, returns null.
+     *
+     * NOTE: This method is on the hot path for every authenticated request, so it must be fast.
+     * We enforce a strict timeout and degrade gracefully (return null) so the
+     * JwtAuthenticationFilter can fall back to local JWT parsing without hanging the request.
      */
     public ProfileValidateResponse validateToken(String token) {
         if (token == null || token.isBlank()) return null;
 
         try {
-            // The profile service accepts cookie-based or Authorization header. We'll call with header.
             Mono<ProfileValidateResponse> mono = webClient.post()
                     .uri("/api/auth/validate-token")
                     .header(HttpHeaders.AUTHORIZATION, "Bearer " + token)
                     .retrieve()
                     .bodyToMono(ProfileValidateWrapper.class)
                     .map(ProfileValidateWrapper::getData)
-                    .onErrorReturn(null);
+                    // Hard timeout so the backend never hangs waiting for profile service
+                    .timeout(Duration.ofSeconds(2))
+                    .onErrorResume(ex -> {
+                        logger.warn("Profile validateToken error/timeout: {}", ex.getMessage());
+                        return Mono.empty(); // will make block() return null
+                    });
 
             return mono.block();
         } catch (Exception ex) {
+            logger.warn("Profile validateToken exception: {}", ex.getMessage());
             return null;
         }
     }
 
     /**
      * Login via profile microservice and return full login data (including token).
+     * Uses a reasonable timeout so the frontend login does not hang indefinitely
+     * if the profile service is slow or unreachable.
      */
     public LoginResponse login(LoginRequest req) {
         try {
@@ -63,7 +76,12 @@ public class ProfileClient {
                             return Mono.error(new RuntimeException("Profile login HTTP " + clientResponse.statusCode()));
                         })
                     )
-                    .bodyToMono(LoginWrapper.class);
+                    .bodyToMono(LoginWrapper.class)
+                    .timeout(Duration.ofSeconds(5))
+                    .onErrorResume(ex -> {
+                        logger.error("Profile login error/timeout: {}", ex.getMessage());
+                        return Mono.empty();
+                    });
 
             LoginWrapper wrapper = mono.block();
             if (wrapper == null) {
