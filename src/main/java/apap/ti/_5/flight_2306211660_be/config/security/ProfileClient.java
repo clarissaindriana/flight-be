@@ -1,6 +1,9 @@
 package apap.ti._5.flight_2306211660_be.config.security;
 
+import java.math.BigDecimal;
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -252,6 +255,44 @@ public class ProfileClient {
                     .uri("/api/users")
                     .retrieve()
                     .bodyToMono(ProfileUsersWrapper.class)
+                    .onErrorReturn(null);
+
+            return mono.block();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    // Get user detail (including balance) via /api/users/detail?search={query}
+    public ProfileUserWrapper getUserDetail(String search) {
+        try {
+            Mono<ProfileUserWrapper> mono = webClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/users/detail")
+                            .queryParam("search", search)
+                            .build())
+                    .retrieve()
+                    .bodyToMono(ProfileUserWrapper.class)
+                    .onErrorReturn(null);
+
+            return mono.block();
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    // Deduct saldo via /api/users/payment
+    public ProfileUserWrapper paymentSaldo(String userId, BigDecimal amount) {
+        try {
+            Map<String, Object> payload = new HashMap<>();
+            payload.put("userId", userId);
+            payload.put("amount", amount);
+
+            Mono<ProfileUserWrapper> mono = webClient.post()
+                    .uri("/api/users/payment")
+                    .bodyValue(payload)
+                    .retrieve()
+                    .bodyToMono(ProfileUserWrapper.class)
                     .onErrorReturn(null);
 
             return mono.block();

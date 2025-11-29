@@ -21,6 +21,7 @@ import apap.ti._5.flight_2306211660_be.config.security.ProfileClient;
 import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.repository.BillRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.bill.UpdateBillRequestDTO;
 
 @Service
 public class BillRestServiceImpl implements BillRestService {
@@ -92,41 +93,47 @@ public class BillRestServiceImpl implements BillRestService {
     @Transactional
     public Bill payBill(UUID id, String customerIdFromToken, String couponCode) throws Exception {
         Bill bill = getBillById(id);
-        if (bill == null) throw new IllegalArgumentException("No Bill Found");
-        
+        if (bill == null) {
+            throw new IllegalArgumentException("No Bill Found");
+        }
+
         // Validate bill status is UNPAID (must be checked first)
         if (bill.getStatus() != Bill.BillStatus.UNPAID) {
             throw new IllegalStateException("Bill is not in UNPAID status");
         }
-        
+
         // Validate customerId matches
         if (!bill.getCustomerId().equals(customerIdFromToken)) {
             throw new SecurityException("Customer not allowed to pay this bill");
         }
 
-        // Fetch customer profile for balance (balance check is early step)
-        ProfileClient.ProfileUserWrapper wrapper = profileClient.getUserById(customerIdFromToken);
-        if (wrapper == null || wrapper.getData() == null) {
-            throw new IllegalStateException("Unable to fetch user profile");
+        BigDecimal finalAmount = bill.getAmount();
+
+        // Fetch customer profile for balance (balance check is early step) via /api/users/detail
+        ProfileClient.ProfileUserWrapper detailWrapper = profileClient.getUserDetail(customerIdFromToken);
+        if (detailWrapper == null || detailWrapper.getData() == null) {
+            // This will be treated as unexpected error by controller (500 with generic message)
+            throw new RuntimeException("Unable to fetch user profile");
         }
 
-        ProfileClient.ProfileUser user = wrapper.getData();
+        ProfileClient.ProfileUser user = detailWrapper.getData();
         BigDecimal balance = user.getBalance() == null ? BigDecimal.ZERO : user.getBalance();
-        BigDecimal finalAmount = bill.getAmount();
 
         // Check balance first (all processes must be blocked if balance insufficient)
         if (balance.compareTo(finalAmount) < 0) {
+            // 400 with this exact message as required
             throw new IllegalStateException("User balance insufficient, please Top Up balance.");
         }
 
-        // TODO: If couponCode provided, call Loyalty Service to validate and compute percentOff
-        // For now we skip loyalty and assume percentOff = 0
+        // TODO: If couponCode provided, call Loyalty Service to validate and compute discount
+        // Currently skipped as per specification (external API not yet available).
 
-        // Deduct balance
-        BigDecimal newBalance = balance.subtract(finalAmount);
-        Map<String, Object> payload = new HashMap<>();
-        payload.put("balance", newBalance);
-        profileClient.updateUser(customerIdFromToken, payload);
+        // Deduct saldo via /api/users/payment
+        ProfileClient.ProfileUserWrapper paymentResult = profileClient.paymentSaldo(customerIdFromToken, finalAmount);
+        if (paymentResult == null || paymentResult.getData() == null) {
+            // Any failure here is considered unexpected so controller returns generic 500 message
+            throw new RuntimeException("Failed to process payment with profile service");
+        }
 
         // Update bill status to PAID
         bill.setStatus(Bill.BillStatus.PAID);
@@ -143,6 +150,28 @@ public class BillRestServiceImpl implements BillRestService {
         // TODO: Add loyalty points (1% of amount, rounded up) to customer via Loyalty Service
 
         return bill;
+    }
+
+    @Override
+    @Transactional
+    public Bill updateBill(UUID id, UpdateBillRequestDTO req) throws Exception {
+        Bill bill = getBillById(id);
+        if (bill == null) {
+            throw new IllegalArgumentException("No Bill Found");
+        }
+
+        // Bill with status PAID cannot be updated
+        if (bill.getStatus() == Bill.BillStatus.PAID) {
+            throw new IllegalStateException("Bill with status PAID cannot be updated");
+        }
+
+        // Update mutable fields based on request
+        bill.setCustomerId(req.getCustomerId());
+        bill.setServiceName(req.getServiceName());
+        bill.setServiceReferenceId(req.getServiceReferenceId());
+        bill.setAmount(req.getAmount());
+
+        return billRepository.save(bill);
     }
 
     private List<Bill> filterBills(List<Bill> source, String customerId, String serviceName, String status) {
@@ -164,7 +193,8 @@ public class BillRestServiceImpl implements BillRestService {
 
     private void sendCallbackToOriginService(Bill bill) {
         // Attempt to call origin service callback URL if configured via property
-        String key = "service.callback.base-url." + bill.getServiceName().toLowerCase();
+        String serviceNameLower = bill.getServiceName() == null ? "" : bill.getServiceName().toLowerCase();
+        String key = "service.callback.base-url." + serviceNameLower;
         String base = env.getProperty(key, "");
         if (base == null || base.isBlank()) {
             logger.info("No callback base URL configured for service {} (property {}). Skipping callback.", bill.getServiceName(), key);
@@ -173,7 +203,15 @@ public class BillRestServiceImpl implements BillRestService {
 
         try {
             WebClient wc = WebClient.create(base);
-            String path = "/api/internal/bill-callback"; // standard callback path expected on services
+
+            // TODO: For other services (Flight, Accommodation, Insurance, VehicleRental),
+            String path;
+            if ("tourpackage".equals(serviceNameLower)) {
+                path = "/api/package/payment/confirm";
+            } else {
+                path = "/api/internal/bill-callback";
+            }
+
             Map<String, Object> payload = new HashMap<>();
             payload.put("serviceReferenceId", bill.getServiceReferenceId());
             payload.put("billId", bill.getId().toString());

@@ -5,6 +5,7 @@ import java.util.UUID;
 
 import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.bill.UpdateBillRequestDTO;
 
 public interface BillRestService {
 
@@ -19,4 +20,6 @@ public interface BillRestService {
     Bill getBillById(UUID id);
 
     Bill payBill(UUID id, String customerIdFromToken, String couponCode) throws Exception;
+
+    Bill updateBill(UUID id, UpdateBillRequestDTO req) throws Exception;
 }

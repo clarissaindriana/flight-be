@@ -14,6 +14,7 @@ import apap.ti._5.flight_2306211660_be.config.security.CurrentUser;
 import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.ConfirmPaymentRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.bill.UpdateBillRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.BaseResponseDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.bill.BillResponseDTO;
 import apap.ti._5.flight_2306211660_be.restservice.bill.BillRestService;
@@ -67,6 +68,67 @@ public class BillRestController {
             base.setTimestamp(new java.util.Date());
             return ResponseEntity.ok(base);
 
+        } catch (Exception ex) {
+            base.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            base.setMessage("Error: " + ex.getMessage());
+            base.setTimestamp(new java.util.Date());
+            return new ResponseEntity<>(base, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    @PutMapping("/update/{billId}")
+    @PreAuthorize("hasAnyRole('CUSTOMER','SUPERADMIN','FLIGHT_AIRLINE','ACCOMMODATION_OWNER','RENTAL_VENDOR','INSURANCE_PROVIDER','TOUR_PACKAGE_VENDOR')")
+    public ResponseEntity<BaseResponseDTO<BillResponseDTO>> updateBill(
+            @PathVariable UUID billId,
+            @Valid @RequestBody UpdateBillRequestDTO req) {
+        var base = new BaseResponseDTO<BillResponseDTO>();
+
+        try {
+            // Required field validations
+            if (req.getCustomerId() == null || req.getCustomerId().isBlank()
+                    || req.getServiceName() == null || req.getServiceName().isBlank()
+                    || req.getServiceReferenceId() == null || req.getServiceReferenceId().isBlank()
+                    || req.getAmount() == null) {
+                base.setStatus(HttpStatus.BAD_REQUEST.value());
+                base.setMessage("Missing required fields");
+                base.setTimestamp(new java.util.Date());
+                return new ResponseEntity<>(base, HttpStatus.BAD_REQUEST);
+            }
+
+            if (req.getAmount().compareTo(BigDecimal.ZERO) <= 0) {
+                base.setStatus(HttpStatus.BAD_REQUEST.value());
+                base.setMessage("Amount must be greater than zero");
+                base.setTimestamp(new java.util.Date());
+                return new ResponseEntity<>(base, HttpStatus.BAD_REQUEST);
+            }
+
+            if (!ALLOWED_SERVICES.contains(req.getServiceName())) {
+                base.setStatus(HttpStatus.BAD_REQUEST.value());
+                base.setMessage("Invalid serviceName");
+                base.setTimestamp(new java.util.Date());
+                return new ResponseEntity<>(base, HttpStatus.BAD_REQUEST);
+            }
+
+            Bill updated = billService.updateBill(billId, req);
+            BillResponseDTO dto = mapToDto(updated);
+
+            base.setStatus(HttpStatus.OK.value());
+            base.setMessage("Bill updated");
+            base.setData(dto);
+            base.setTimestamp(new java.util.Date());
+            return ResponseEntity.ok(base);
+        } catch (IllegalArgumentException ex) {
+            // Bill not found
+            base.setStatus(HttpStatus.NOT_FOUND.value());
+            base.setMessage("No Bill Found");
+            base.setTimestamp(new java.util.Date());
+            return new ResponseEntity<>(base, HttpStatus.NOT_FOUND);
+        } catch (IllegalStateException ex) {
+            // Business rule violation (e.g., cannot update PAID bill)
+            base.setStatus(HttpStatus.BAD_REQUEST.value());
+            base.setMessage(ex.getMessage());
+            base.setTimestamp(new java.util.Date());
+            return new ResponseEntity<>(base, HttpStatus.BAD_REQUEST);
         } catch (Exception ex) {
             base.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
             base.setMessage("Error: " + ex.getMessage());
@@ -230,18 +292,20 @@ public class BillRestController {
         return ResponseEntity.ok(base);
     }
 
-    @PostMapping("/pay")
+    @PostMapping("/{billId}/pay")
     @PreAuthorize("hasAnyRole('CUSTOMER')")
-    public ResponseEntity<BaseResponseDTO<BillResponseDTO>> payBill(@RequestBody ConfirmPaymentRequestDTO req) {
+    public ResponseEntity<BaseResponseDTO<BillResponseDTO>> payBill(
+            @PathVariable UUID billId,
+            @RequestBody(required = false) ConfirmPaymentRequestDTO req) {
         var base = new BaseResponseDTO<BillResponseDTO>();
         String callerUserId = CurrentUser.getUserId();
-        UUID billId = req.getBillId();
-        String customerId = req.getCustomerId();
-        String coupon = null; // TODO: Fetch coupon from loyalty service
+        String customerIdFromBody = (req != null ? req.getCustomerId() : null);
+        String coupon = null; // TODO: Integrate coupon/loyalty service when available
 
         try {
-            // Validate customerId from request matches JWT token
-            if (!customerId.equals(callerUserId)) {
+            // Validate customerId from request (if provided) matches JWT token
+            if (customerIdFromBody != null && !customerIdFromBody.isBlank()
+                    && !customerIdFromBody.equals(callerUserId)) {
                 throw new SecurityException("Customer ID mismatch");
             }
 
@@ -269,6 +333,7 @@ public class BillRestController {
             base.setTimestamp(new java.util.Date());
             return new ResponseEntity<>(base, HttpStatus.FORBIDDEN);
         } catch (IllegalStateException ex) {
+            // Includes insufficient balance ("User balance insufficient, please Top Up balance.")
             base.setStatus(HttpStatus.BAD_REQUEST.value());
             base.setMessage(ex.getMessage());
             base.setTimestamp(new java.util.Date());
