@@ -1,6 +1,7 @@
 package apap.ti._5.flight_2306211660_be.restservice.flight;
 
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -34,6 +35,8 @@ import apap.ti._5.flight_2306211660_be.restservice.seat.SeatRestService;
 
 @Service
 public class FlightRestServiceImpl implements FlightRestService {
+
+    private static final ZoneId APP_ZONE = ZoneId.of("Asia/Jakarta");
 
     @Autowired
     private FlightRepository flightRepository;
@@ -73,8 +76,8 @@ public class FlightRestServiceImpl implements FlightRestService {
         // Validate interval
         int hours = (intervalHours == null || intervalHours <= 0) ? 3 : intervalHours;
 
-        java.time.LocalDateTime now = java.time.LocalDateTime.now();
-        java.time.LocalDateTime end = now.plusHours(hours);
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
+        LocalDateTime end = now.plusHours(hours);
 
         // Find candidate flights: not deleted, status Scheduled(1) or Delayed(4), departure after now and <= end
         List<Flight> candidates = flightRepository.findByIsDeleted(false).stream()
@@ -320,7 +323,7 @@ public class FlightRestServiceImpl implements FlightRestService {
 
     @Override
     public long getActiveFlightsTodayCount() {
-        java.time.LocalDate today = java.time.LocalDate.now();
+        java.time.LocalDate today = java.time.LocalDate.now(APP_ZONE);
         return flightRepository.findByIsDeleted(false).stream()
                 .filter(f -> f.getStatus() != null && (f.getStatus() == 1 || f.getStatus() == 2))
                 .filter(f -> f.getDepartureTime() != null && f.getDepartureTime().toLocalDate().isEqual(today))
@@ -358,8 +361,8 @@ public class FlightRestServiceImpl implements FlightRestService {
             throw new IllegalArgumentException("Departure time must be before arrival time");
         }
 
-        // Validate departure time is not in the past
-        if (dto.getDepartureTime().isBefore(LocalDateTime.now())) {
+        // Validate departure time is not in the past (using application timezone)
+        if (dto.getDepartureTime().isBefore(LocalDateTime.now(APP_ZONE))) {
             throw new IllegalArgumentException("Departure time cannot be in the past");
         }
 
@@ -570,7 +573,7 @@ public class FlightRestServiceImpl implements FlightRestService {
     }
 
     private Flight updateFlightStatusBasedOnTime(Flight flight) {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(APP_ZONE);
 
         // Only update status for active flights (not cancelled/deleted)
         if (flight.getIsDeleted()) {
