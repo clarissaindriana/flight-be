@@ -47,9 +47,6 @@ public class Bill {
     @Column(nullable = false)
     private BillStatus status;
 
-    @Column(name = "due_date", nullable = false)
-    private LocalDateTime dueDate;
-
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
