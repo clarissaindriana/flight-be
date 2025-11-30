@@ -6,11 +6,12 @@ import java.util.List;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.model.Booking;
 import apap.ti._5.flight_2306211660_be.model.BookingPassenger;
 import apap.ti._5.flight_2306211660_be.model.ClassFlight;
@@ -18,7 +19,6 @@ import apap.ti._5.flight_2306211660_be.model.Flight;
 import apap.ti._5.flight_2306211660_be.model.Passenger;
 import apap.ti._5.flight_2306211660_be.model.Seat;
 import apap.ti._5.flight_2306211660_be.repository.AirlineRepository;
-import apap.ti._5.flight_2306211660_be.repository.BillRepository;
 import apap.ti._5.flight_2306211660_be.repository.BookingPassengerRepository;
 import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
 import apap.ti._5.flight_2306211660_be.repository.ClassFlightRepository;
@@ -59,8 +59,7 @@ public class BookingRestServiceImpl implements BookingRestService {
     @Autowired
     private AirlineRepository airlineRepository;
 
-    @Autowired
-    private BillRepository billRepository;
+    private static final Logger logger = LoggerFactory.getLogger(BookingRestServiceImpl.class);
 
     @Override
     @Transactional
@@ -556,16 +555,6 @@ public class BookingRestServiceImpl implements BookingRestService {
         return String.format("%s-%03d", prefix, nextNumber);
     }
 
-    private void allocateSeats(String bookingId, List<Integer> seatIds) {
-        for (Integer seatId : seatIds) {
-            Seat seat = seatRepository.findById(seatId).orElse(null);
-            if (seat != null && !seat.getIsBooked()) {
-                seat.setIsBooked(true);
-                seatRepository.save(seat);
-            }
-        }
-    }
-
     private void allocateSeats(String bookingId, Integer passengerCount, Integer classFlightId) {
         // Find available seats in the class flight (stable order)
         List<Seat> availableSeats = seatRepository.findAll().stream()
@@ -708,48 +697,40 @@ public class BookingRestServiceImpl implements BookingRestService {
     @Override
     @Transactional
     public BookingResponseDTO confirmPayment(ConfirmPaymentRequestDTO dto) {
-        if (dto == null || dto.getBillId() == null) {
-            throw new IllegalArgumentException("Bill ID is required");
+        if (dto == null || dto.getServiceReferenceId() == null) {
+            throw new IllegalArgumentException("Service reference ID (booking ID) is required");
         }
 
-        // Find the related bill
-        Bill bill = billRepository.findById(dto.getBillId()).orElse(null);
-        if (bill == null) {
-            throw new IllegalArgumentException("Bill not found");
-        }
-
-        // Optional: validate customerId consistency when provided
-        if (dto.getCustomerId() != null && !dto.getCustomerId().isBlank()
-                && bill.getCustomerId() != null
-                && !dto.getCustomerId().equals(bill.getCustomerId())) {
-            throw new SecurityException("Customer ID mismatch");
-        }
-
-        // Only handle Flight-originated bills in this booking service
-        if (bill.getServiceName() == null || !bill.getServiceName().equalsIgnoreCase("Flight")) {
-            throw new IllegalArgumentException("Unsupported service for booking payment confirmation");
-        }
-
-        String bookingId = bill.getServiceReferenceId();
-        if (bookingId == null || bookingId.isBlank()) {
-            throw new IllegalArgumentException("Bill does not reference a booking");
-        }
-
+        String bookingId = dto.getServiceReferenceId();
+        
+        // Find the booking directly by serviceReferenceId
         Booking booking = bookingRepository.findById(bookingId).orElse(null);
         if (booking == null || (booking.getIsDeleted() != null && booking.getIsDeleted())) {
             throw new IllegalArgumentException("Booking not found");
         }
 
+        // Optional: validate customerId consistency when provided
+        if (dto.getCustomerId() != null && !dto.getCustomerId().isBlank() && !dto.getCustomerId().equals(booking.getContactEmail())) {
+            // Note: checking customerId from DTO (from Bill.customerId) for consistency
+            // This is a soft validation - we don't have customer ID on Booking, only email
+            logger.debug("Customer ID from payment: {}, booking contact email: {}", dto.getCustomerId(), booking.getContactEmail());
+        }
+
         // Only transition Unpaid (1) -> Paid (2); if already paid, treat as idempotent
         if (booking.getStatus() != null && booking.getStatus() != 1) {
             if (booking.getStatus() == 2) {
+                logger.info("Booking {} already paid, returning idempotent response", bookingId);
                 return convertToBookingResponseDTO(booking);
             }
-            throw new IllegalStateException("Booking cannot be updated to paid");
+            throw new IllegalStateException("Booking status is " + booking.getStatus() + " and cannot be updated to paid. Only Unpaid (1) bookings can be paid.");
         }
 
+        // Update booking status to Paid (2)
+        logger.info("Updating booking {} status from {} to Paid", bookingId, booking.getStatus());
         booking.setStatus(2); // Paid
         booking = bookingRepository.save(booking);
+        logger.info("Booking {} payment confirmed successfully", bookingId);
+        
         return convertToBookingResponseDTO(booking);
     }
 

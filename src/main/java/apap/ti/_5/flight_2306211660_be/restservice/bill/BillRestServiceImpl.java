@@ -201,9 +201,9 @@ public class BillRestServiceImpl implements BillRestService {
                     .baseUrl(base)
                     .build();
 
-            // Build standard ConfirmPaymentRequestDTO callback payload
+            // Build standard ConfirmPaymentRequestDTO callback payload with serviceReferenceId
             ConfirmPaymentRequestDTO payload = new ConfirmPaymentRequestDTO(
-                    bill.getId(),
+                    bill.getServiceReferenceId(),
                     bill.getCustomerId()
             );
 
