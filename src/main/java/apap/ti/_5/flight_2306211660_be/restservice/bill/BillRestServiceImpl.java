@@ -110,7 +110,6 @@ public class BillRestServiceImpl implements BillRestService {
         BigDecimal finalAmount = bill.getAmount();
  
         // Skip explicit profile balance fetch here and rely on external /api/users/payment
-        // (via SaldoUpdateRequestDTO) to validate and deduct saldo based on userId and amount.
 
         // TODO: If couponCode provided, call Loyalty Service to validate and compute discount
         // Currently skipped as per specification (external API not yet available).
