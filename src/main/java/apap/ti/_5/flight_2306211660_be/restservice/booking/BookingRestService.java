@@ -3,6 +3,7 @@ package apap.ti._5.flight_2306211660_be.restservice.booking;
 import java.util.List;
 
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.booking.ConfirmPaymentRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingChartResponseDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingChartResultDTO;
@@ -41,7 +42,10 @@ public interface BookingRestService {
 
     // Chart statistics per flight for a given month & year (counts only Paid(2) and Unpaid(1))
     java.util.List<BookingChartResponseDTO> getBookingChart(int month, int year);
-
+ 
     // New: return chart list + summary (totalBookings, totalRevenue, topPerformer)
     BookingChartResultDTO getBookingChartData(int month, int year);
+
+    // Internal: confirm payment callback from Bill service to set booking as Paid
+    BookingResponseDTO confirmPayment(ConfirmPaymentRequestDTO dto);
 }

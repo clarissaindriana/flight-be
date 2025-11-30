@@ -3,9 +3,7 @@ package apap.ti._5.flight_2306211660_be.restservice.bill;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -23,6 +21,7 @@ import apap.ti._5.flight_2306211660_be.repository.BillRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.SaldoUpdateRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.UpdateBillRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.booking.ConfirmPaymentRequestDTO;
 
 @Service
 public class BillRestServiceImpl implements BillRestService {
@@ -209,23 +208,35 @@ public class BillRestServiceImpl implements BillRestService {
         try {
             WebClient wc = WebClient.create(base);
 
-            // TODO: For other services (Flight, Accommodation, Insurance, VehicleRental),
+            // Build standard ConfirmPaymentRequestDTO callback payload
+            ConfirmPaymentRequestDTO payload = new ConfirmPaymentRequestDTO(
+                    bill.getId(),
+                    bill.getCustomerId()
+            );
+
+            // Determine internal callback path per service.
+            // For Flight (this service), expose /api/booking/confirmpayment.
+            // For Tour Package Vendor, keep the provided endpoint.
+            // For other services, we expect each to implement its own POST /confirmpayment.
             String path;
-            if ("tourpackage".equals(serviceNameLower)) {
+            if ("flight".equals(serviceNameLower)) {
+                path = "/api/booking/payment/confirm";
+            } else if ("tourpackage".equals(serviceNameLower)) {
                 path = "/api/package/payment/confirm";
             } else {
-                path = "/api/internal/bill-callback";
+                path = "/payment/confirm"; // TODO: align with each service's internal confirmPayment endpoint
             }
 
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("serviceReferenceId", bill.getServiceReferenceId());
-            payload.put("billId", bill.getId().toString());
-            payload.put("status", bill.getStatus().name());
+            wc.post()
+                    .uri(path)
+                    .bodyValue(payload)
+                    .retrieve()
+                    .bodyToMono(Object.class)
+                    .block();
 
-            wc.post().uri(path).bodyValue(payload).retrieve().bodyToMono(Object.class).block();
-            logger.info("Callback sent to {}{}", base, path);
+            logger.info("ConfirmPayment callback sent to {}{}", base, path);
         } catch (Exception ex) {
-            logger.warn("Failed to send callback to origin service {}: {}", bill.getServiceName(), ex.getMessage());
+            logger.warn("Failed to send confirmPayment callback to origin service {}: {}", bill.getServiceName(), ex.getMessage());
         }
     }
 }

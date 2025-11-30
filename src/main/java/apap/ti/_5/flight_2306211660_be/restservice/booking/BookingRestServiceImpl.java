@@ -10,6 +10,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.model.Booking;
 import apap.ti._5.flight_2306211660_be.model.BookingPassenger;
 import apap.ti._5.flight_2306211660_be.model.ClassFlight;
@@ -17,6 +18,7 @@ import apap.ti._5.flight_2306211660_be.model.Flight;
 import apap.ti._5.flight_2306211660_be.model.Passenger;
 import apap.ti._5.flight_2306211660_be.model.Seat;
 import apap.ti._5.flight_2306211660_be.repository.AirlineRepository;
+import apap.ti._5.flight_2306211660_be.repository.BillRepository;
 import apap.ti._5.flight_2306211660_be.repository.BookingPassengerRepository;
 import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
 import apap.ti._5.flight_2306211660_be.repository.ClassFlightRepository;
@@ -24,6 +26,7 @@ import apap.ti._5.flight_2306211660_be.repository.FlightRepository;
 import apap.ti._5.flight_2306211660_be.repository.PassengerRepository;
 import apap.ti._5.flight_2306211660_be.repository.SeatRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.booking.ConfirmPaymentRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.passenger.AddPassengerRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingChartResponseDTO;
@@ -52,9 +55,12 @@ public class BookingRestServiceImpl implements BookingRestService {
 
     @Autowired
     private SeatRepository seatRepository;
-
+ 
     @Autowired
     private AirlineRepository airlineRepository;
+
+    @Autowired
+    private BillRepository billRepository;
 
     @Override
     @Transactional
@@ -697,6 +703,54 @@ public class BookingRestServiceImpl implements BookingRestService {
                 })
                 .filter(java.util.Objects::nonNull)
                 .collect(java.util.stream.Collectors.toList());
+    }
+ 
+    @Override
+    @Transactional
+    public BookingResponseDTO confirmPayment(ConfirmPaymentRequestDTO dto) {
+        if (dto == null || dto.getBillId() == null) {
+            throw new IllegalArgumentException("Bill ID is required");
+        }
+
+        // Find the related bill
+        Bill bill = billRepository.findById(dto.getBillId()).orElse(null);
+        if (bill == null) {
+            throw new IllegalArgumentException("Bill not found");
+        }
+
+        // Optional: validate customerId consistency when provided
+        if (dto.getCustomerId() != null && !dto.getCustomerId().isBlank()
+                && bill.getCustomerId() != null
+                && !dto.getCustomerId().equals(bill.getCustomerId())) {
+            throw new SecurityException("Customer ID mismatch");
+        }
+
+        // Only handle Flight-originated bills in this booking service
+        if (bill.getServiceName() == null || !bill.getServiceName().equalsIgnoreCase("Flight")) {
+            throw new IllegalArgumentException("Unsupported service for booking payment confirmation");
+        }
+
+        String bookingId = bill.getServiceReferenceId();
+        if (bookingId == null || bookingId.isBlank()) {
+            throw new IllegalArgumentException("Bill does not reference a booking");
+        }
+
+        Booking booking = bookingRepository.findById(bookingId).orElse(null);
+        if (booking == null || (booking.getIsDeleted() != null && booking.getIsDeleted())) {
+            throw new IllegalArgumentException("Booking not found");
+        }
+
+        // Only transition Unpaid (1) -> Paid (2); if already paid, treat as idempotent
+        if (booking.getStatus() != null && booking.getStatus() != 1) {
+            if (booking.getStatus() == 2) {
+                return convertToBookingResponseDTO(booking);
+            }
+            throw new IllegalStateException("Booking cannot be updated to paid");
+        }
+
+        booking.setStatus(2); // Paid
+        booking = bookingRepository.save(booking);
+        return convertToBookingResponseDTO(booking);
     }
 
     @Override

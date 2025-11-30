@@ -4,6 +4,7 @@ import apap.ti._5.flight_2306211660_be.restdto.response.BaseResponseDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.booking.ConfirmPaymentRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingResponseDTO;
 
 import apap.ti._5.flight_2306211660_be.model.Booking;
@@ -376,6 +377,44 @@ public class BookingRestController {
             baseResponseDTO.setTimestamp(new Date());
             return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
 
+        } catch (IllegalStateException ex) {
+            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
+            baseResponseDTO.setMessage(ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
+        } catch (Exception ex) {
+            baseResponseDTO.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
+            baseResponseDTO.setMessage("Terjadi kesalahan pada server: " + ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    // Internal callback from Bill service after successful payment.
+    // This endpoint is called via POST /api/booking/confirmpayment with ConfirmPaymentRequestDTO.
+    @PostMapping(BASE_URL + "/payment/confirm")
+    public ResponseEntity<BaseResponseDTO<BookingResponseDTO>> confirmPayment(
+            @RequestBody ConfirmPaymentRequestDTO request) {
+        var baseResponseDTO = new BaseResponseDTO<BookingResponseDTO>();
+
+        try {
+            BookingResponseDTO booking = bookingRestService.confirmPayment(request);
+
+            baseResponseDTO.setStatus(HttpStatus.OK.value());
+            baseResponseDTO.setData(booking);
+            baseResponseDTO.setMessage("Booking payment confirmed");
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
+        } catch (IllegalArgumentException ex) {
+            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
+            baseResponseDTO.setMessage(ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
+        } catch (SecurityException ex) {
+            baseResponseDTO.setStatus(HttpStatus.FORBIDDEN.value());
+            baseResponseDTO.setMessage(ex.getMessage());
+            baseResponseDTO.setTimestamp(new Date());
+            return new ResponseEntity<>(baseResponseDTO, HttpStatus.FORBIDDEN);
         } catch (IllegalStateException ex) {
             baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
             baseResponseDTO.setMessage(ex.getMessage());
