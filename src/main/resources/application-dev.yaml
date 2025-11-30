@@ -22,11 +22,11 @@ profile:
 service:
   callback:
     base-url:
-      flight: ${FLIGHT_SERVICE_CALLBACK_BASE_URL:http://localhost:8080}
-      tourpackage: ${TOURPACKAGE_SERVICE_CALLBACK_BASE_URL:}
-      accommodation: ${ACCOMMODATION_SERVICE_CALLBACK_BASE_URL:}
-      vehiclerental: ${VEHICLERENTAL_SERVICE_CALLBACK_BASE_URL:}
-      insurance: ${INSURANCE_SERVICE_CALLBACK_BASE_URL:}
+      flight: ${FLIGHT_SERVICE_CALLBACK_BASE_URL:http://2306211660-be.hafizmuh.site  }
+      tourpackage: ${TOURPACKAGE_SERVICE_CALLBACK_BASE_URL:http://2306219575-be.hafizmuh.site}
+      accommodation: ${ACCOMMODATION_SERVICE_CALLBACK_BASE_URL:http://2306212083-be.hafizmuh.site}
+      vehiclerental: ${VEHICLERENTAL_SERVICE_CALLBACK_BASE_URL:http://2306203236-be.hafizmuh.site}
+      insurance: ${INSURANCE_SERVICE_CALLBACK_BASE_URL:http://2306240061-be.hafizmuh.site}
 
 # Logging configuration for development
 logging:
