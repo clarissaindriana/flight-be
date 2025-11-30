@@ -21,6 +21,7 @@ import apap.ti._5.flight_2306211660_be.config.security.ProfileClient;
 import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.repository.BillRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.bill.SaldoUpdateRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.UpdateBillRequestDTO;
 
 @Service
@@ -128,8 +129,12 @@ public class BillRestServiceImpl implements BillRestService {
         // TODO: If couponCode provided, call Loyalty Service to validate and compute discount
         // Currently skipped as per specification (external API not yet available).
 
-        // Deduct saldo via /api/users/payment
-        ProfileClient.ProfileUserWrapper paymentResult = profileClient.paymentSaldo(customerIdFromToken, finalAmount);
+        // Deduct saldo via /api/users/payment using SaldoUpdateRequestDTO to match external API
+        SaldoUpdateRequestDTO saldoRequest = new SaldoUpdateRequestDTO();
+        saldoRequest.setUserId(customerIdFromToken);
+        saldoRequest.setAmount(finalAmount);
+
+        ProfileClient.ProfileUserWrapper paymentResult = profileClient.paymentSaldo(saldoRequest);
         if (paymentResult == null || paymentResult.getData() == null) {
             // Any failure here is considered unexpected so controller returns generic 500 message
             throw new RuntimeException("Failed to process payment with profile service");

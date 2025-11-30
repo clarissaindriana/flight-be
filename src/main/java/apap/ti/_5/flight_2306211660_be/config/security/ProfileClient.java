@@ -1,9 +1,6 @@
 package apap.ti._5.flight_2306211660_be.config.security;
 
-import java.math.BigDecimal;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.Map;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -281,25 +278,21 @@ public class ProfileClient {
         }
     }
 
-    // Deduct saldo via /api/users/payment
-    public ProfileUserWrapper paymentSaldo(String userId, BigDecimal amount) {
-        try {
-            Map<String, Object> payload = new HashMap<>();
-            payload.put("userId", userId);
-            payload.put("amount", amount);
-
-            Mono<ProfileUserWrapper> mono = webClient.post()
-                    .uri("/api/users/payment")
-                    .bodyValue(payload)
-                    .retrieve()
-                    .bodyToMono(ProfileUserWrapper.class)
-                    .onErrorReturn(null);
-
-            return mono.block();
-        } catch (Exception ex) {
-            return null;
+        // Deduct saldo via /api/users/payment
+        public ProfileUserWrapper paymentSaldo(apap.ti._5.flight_2306211660_be.restdto.request.bill.SaldoUpdateRequestDTO request) {
+            try {
+                Mono<ProfileUserWrapper> mono = webClient.post()
+                        .uri("/api/users/payment")
+                        .bodyValue(request)
+                        .retrieve()
+                        .bodyToMono(ProfileUserWrapper.class)
+                        .onErrorReturn(null);
+    
+                return mono.block();
+            } catch (Exception ex) {
+                return null;
+            }
         }
-    }
 
     // Update user profile: PUT /api/users/{id}
     public ProfileUserWrapper updateUser(String id, Object payload) {
