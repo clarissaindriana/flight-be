@@ -7,7 +7,6 @@ import java.util.Collections;
 import java.util.List;
 import java.util.UUID;
 
-import org.hamcrest.Matchers;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -15,12 +14,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -31,11 +30,10 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
-import org.mockito.MockedStatic;
-import static org.mockito.Mockito.mockStatic;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import apap.ti._5.flight_2306211660_be.config.security.CurrentUser;
 import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.restcontroller.bill.BillRestController;
 import apap.ti._5.flight_2306211660_be.restdto.request.bill.AddBillRequestDTO;
@@ -80,19 +78,7 @@ class BillRestControllerTest {
                 .build();
     }
 
-    private BillResponseDTO sampleBillDTO(UUID id, String customerId, String serviceName, String serviceRef, String desc, BigDecimal amount, String status) {
-        BillResponseDTO dto = new BillResponseDTO();
-        dto.setId(id);
-        dto.setCustomerId(customerId);
-        dto.setServiceName(serviceName);
-        dto.setServiceReferenceId(serviceRef);
-        dto.setDescription(desc);
-        dto.setAmount(amount);
-        dto.setStatus(status);
-        dto.setCreatedAt(LocalDateTime.now().minusDays(1));
-        dto.setUpdatedAt(LocalDateTime.now());
-        return dto;
-    }
+    // ==================== POST /api/bill/create Tests ====================
 
     @Test
     @DisplayName("POST /api/bill/create returns 200 when valid")
@@ -116,11 +102,14 @@ class BillRestControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/bill/create returns 400 when missing required fields")
-    void createBill_missingFields() throws Exception {
+    @DisplayName("POST /api/bill/create returns 400 when customerId is null")
+    void createBill_nullCustomerId() throws Exception {
         var req = new AddBillRequestDTO();
-        req.setCustomerId("");
-        req.setServiceName("");
+        req.setCustomerId(null);
+        req.setServiceName("Flight");
+        req.setServiceReferenceId("ref1");
+        req.setDescription("Flight booking");
+        req.setAmount(BigDecimal.valueOf(100.0));
 
         mockMvc.perform(post("/api/bill/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -133,14 +122,94 @@ class BillRestControllerTest {
     }
 
     @Test
-    @DisplayName("POST /api/bill/create returns 400 when amount <= 0")
-    void createBill_invalidAmount() throws Exception {
+    @DisplayName("POST /api/bill/create returns 400 when customerId is blank")
+    void createBill_blankCustomerId() throws Exception {
+        var req = new AddBillRequestDTO();
+        req.setCustomerId("");
+        req.setServiceName("Flight");
+        req.setServiceReferenceId("ref1");
+        req.setDescription("Flight booking");
+        req.setAmount(BigDecimal.valueOf(100.0));
+
+        mockMvc.perform(post("/api/bill/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Missing required fields"));
+
+        verify(billRestService, never()).createBill(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/create returns 400 when serviceName is null")
+    void createBill_nullServiceName() throws Exception {
+        var req = new AddBillRequestDTO();
+        req.setCustomerId("cust1");
+        req.setServiceName(null);
+        req.setServiceReferenceId("ref1");
+        req.setDescription("Flight booking");
+        req.setAmount(BigDecimal.valueOf(100.0));
+
+        mockMvc.perform(post("/api/bill/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Missing required fields"));
+
+        verify(billRestService, never()).createBill(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/create returns 400 when amount is null")
+    void createBill_nullAmount() throws Exception {
+        var req = new AddBillRequestDTO();
+        req.setCustomerId("cust1");
+        req.setServiceName("Flight");
+        req.setServiceReferenceId("ref1");
+        req.setDescription("Flight booking");
+        req.setAmount(null);
+
+        mockMvc.perform(post("/api/bill/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Missing required fields"));
+
+        verify(billRestService, never()).createBill(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/create returns 400 when amount is zero")
+    void createBill_zeroAmount() throws Exception {
         var req = new AddBillRequestDTO();
         req.setCustomerId("cust1");
         req.setServiceName("Flight");
         req.setServiceReferenceId("ref1");
         req.setDescription("Flight booking");
         req.setAmount(BigDecimal.ZERO);
+
+        mockMvc.perform(post("/api/bill/create")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Amount must be greater than zero"));
+
+        verify(billRestService, never()).createBill(any());
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/create returns 400 when amount is negative")
+    void createBill_negativeAmount() throws Exception {
+        var req = new AddBillRequestDTO();
+        req.setCustomerId("cust1");
+        req.setServiceName("Flight");
+        req.setServiceReferenceId("ref1");
+        req.setDescription("Flight booking");
+        req.setAmount(BigDecimal.valueOf(-50.0));
 
         mockMvc.perform(post("/api/bill/create")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -192,6 +261,8 @@ class BillRestControllerTest {
                 .andExpect(jsonPath("$.message").value("Error: db error"));
     }
 
+    // ==================== PUT /api/bill/update/{billId} Tests ====================
+
     @Test
     @DisplayName("PUT /api/bill/update/{billId} returns 200 when valid")
     void updateBill_valid() throws Exception {
@@ -213,7 +284,45 @@ class BillRestControllerTest {
                 .andExpect(jsonPath("$.data.amount").value(150.0));
     }
 
+    @Test
+    @DisplayName("PUT /api/bill/update/{billId} returns 400 when missing required fields")
+    void updateBill_missingFields() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var req = new UpdateBillRequestDTO();
+        req.setCustomerId(null);
+        req.setServiceName("Flight");
+        req.setServiceReferenceId("ref1");
+        req.setAmount(BigDecimal.valueOf(100.0));
 
+        mockMvc.perform(put("/api/bill/update/{billId}", billId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Missing required fields"));
+
+        verify(billRestService, never()).updateBill(any(), any());
+    }
+
+    @Test
+    @DisplayName("PUT /api/bill/update/{billId} returns 400 when amount <= 0")
+    void updateBill_invalidAmount() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var req = new UpdateBillRequestDTO();
+        req.setCustomerId("cust1");
+        req.setServiceName("Flight");
+        req.setServiceReferenceId("ref1");
+        req.setAmount(BigDecimal.ZERO);
+
+        mockMvc.perform(put("/api/bill/update/{billId}", billId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Amount must be greater than zero"));
+
+        verify(billRestService, never()).updateBill(any(), any());
+    }
 
     @Test
     @DisplayName("PUT /api/bill/update/{billId} returns 400 when invalid serviceName")
@@ -302,6 +411,8 @@ class BillRestControllerTest {
                 .andExpect(jsonPath("$.message").value("Error: db error"));
     }
 
+    // ==================== GET /api/bill Tests ====================
+
     @Test
     @DisplayName("GET /api/bill returns 200 with bills")
     void getAllBills_found() throws Exception {
@@ -326,78 +437,218 @@ class BillRestControllerTest {
                 .andExpect(jsonPath("$.message").value("No Bill Found"));
     }
 
-    // For getCustomerBills, need to mock CurrentUser
-    // Since CurrentUser is static, it's tricky. Perhaps use PowerMock or assume it's set.
-
-    // For simplicity, since it's hard to mock static, and the task is to adjust, perhaps skip or note.
-
-    // Actually, to achieve coverage, I need to test the methods, but mocking static is complex.
-
-    // Perhaps use reflection to set the static field, but it's not straightforward.
-
-    // For now, I'll add tests assuming the static methods return expected values.
-
-    // But since it's static, in test, I can use Mockito to mock static, but Mockito doesn't support static easily.
-
-    // Use @MockedStatic
-
-    // But for simplicity, I'll add the tests with assumptions.
-
-    // To make it work, I can use ReflectionTestUtils or something, but for static, it's hard.
-
-    // Perhaps the tests can be written with the assumption that CurrentUser.getUserId() returns "cust1" etc.
-
-    // But to properly test, I need to mock it.
-
-    // Let's use @MockedStatic from Mockito.
-
-    // But since it's JUnit 5, I can use @ExtendWith(MockitoExtension.class) and @MockedStatic
-
-    // But for now, I'll write the tests and assume the static methods are mocked in setup.
-
-    // Actually, to keep it simple, I'll add the tests without mocking static for now, but note that for full coverage, need to mock CurrentUser.
-
-    // But since the task is to adjust, and the file is empty, I'll create basic tests.
-
-    // For getCustomerBills, getServiceBills, getBillDetail, payBill, they use CurrentUser.
-
-    // To properly test, I need to mock CurrentUser.getUserId() and getRole().
-
-    // I can use Mockito's @MockedStatic.
-
-    // Let's do that.
-
-    // But since it's a lot, perhaps create the file with basic structure.
-
-    // For now, I'll write the tests for methods that don't use CurrentUser first.
-
-    // Then add for others.
-
-    // Actually, let's add all.
-
-    // To mock static, I can use:
-
-    // try (MockedStatic<CurrentUser> mocked = Mockito.mockStatic(CurrentUser.class)) {
-
-    // mocked.when(CurrentUser::getUserId).thenReturn("cust1");
-
-    // // test
-
-    // }
-
-    // Yes, that's the way.
-
-    // So, I'll add that.
-
-    // But for brevity, I'll add a few key tests.
-
-    // Since the response is large, I'll create the file with essential tests.
-
-    // Let's continue.
-
+    // ==================== GET /api/bill/customer Tests ====================
 
     @Test
-    @DisplayName("GET /api/bill/detail/{billId} returns 404 when not found")
+    @DisplayName("GET /api/bill/customer returns 200 when user authenticated and bills found")
+    void getCustomerBills_valid() throws Exception {
+        var bill1 = sampleBill(UUID.randomUUID(), "cust1", "Flight", "ref1", "desc1", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        when(billRestService.getCustomerBills("cust1", null, null, null)).thenReturn(Arrays.asList(bill1));
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(get("/api/bill/customer"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.length()").value(1));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/customer returns 401 when user not authenticated")
+    void getCustomerBills_notAuthenticated() throws Exception {
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn(null);
+
+            mockMvc.perform(get("/api/bill/customer"))
+                    .andExpect(status().isUnauthorized())
+                    .andExpect(jsonPath("$.status").value(401))
+                    .andExpect(jsonPath("$.message").value("User not authenticated"));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/customer returns 403 when customerId parameter doesn't match JWT")
+    void getCustomerBills_forbiddenMismatch() throws Exception {
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(get("/api/bill/customer?customerId=cust2"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403))
+                    .andExpect(jsonPath("$.message").value("Can only view your own bills"));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/customer returns 404 when no bills found")
+    void getCustomerBills_notFound() throws Exception {
+        when(billRestService.getCustomerBills("cust1", null, null, null)).thenReturn(Collections.emptyList());
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(get("/api/bill/customer"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.status").value(404))
+                    .andExpect(jsonPath("$.message").value("No Bill Found"));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/customer returns 200 with sorting")
+    void getCustomerBills_withSorting() throws Exception {
+        var bill1 = sampleBill(UUID.randomUUID(), "cust1", "Flight", "ref1", "desc1", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        when(billRestService.getCustomerBills("cust1", null, "createdAt", "asc")).thenReturn(Arrays.asList(bill1));
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(get("/api/bill/customer?sortBy=createdAt&order=asc"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.length()").value(1));
+        }
+    }
+
+    // ==================== GET /api/bill/{serviceName} Tests ====================
+
+    @Test
+    @DisplayName("GET /api/bill/{serviceName} returns 200 when valid")
+    void getServiceBills_valid() throws Exception {
+        var bill1 = sampleBill(UUID.randomUUID(), "cust1", "Flight", "ref1", "desc1", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        when(billRestService.getServiceBills("Flight", null, null)).thenReturn(Arrays.asList(bill1));
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getRole).thenReturn("ROLE_SUPERADMIN");
+
+            mockMvc.perform(get("/api/bill/Flight"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.length()").value(1));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/{serviceName} returns 403 when role doesn't match service")
+    void getServiceBills_forbiddenRole() throws Exception {
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getRole).thenReturn("ROLE_ACCOMMODATION_OWNER");
+
+            mockMvc.perform(get("/api/bill/Flight"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403))
+                    .andExpect(jsonPath("$.message").value("Forbidden: can only access bills for your service"));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/{serviceName} returns 404 when no bills found")
+    void getServiceBills_notFound() throws Exception {
+        when(billRestService.getServiceBills("Flight", null, null)).thenReturn(Collections.emptyList());
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getRole).thenReturn("ROLE_SUPERADMIN");
+
+            mockMvc.perform(get("/api/bill/Flight"))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.status").value(404))
+                    .andExpect(jsonPath("$.message").value("No Bill Found"));
+        }
+    }
+
+    // ==================== GET /api/bill/detail/{billId} Tests ====================
+
+    @Test
+    @DisplayName("GET /api/bill/detail/{billId} returns 200 for SUPERADMIN")
+    void getBillDetail_superadmin() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getRole).thenReturn("ROLE_SUPERADMIN");
+            mocked.when(CurrentUser::getUserId).thenReturn("admin");
+
+            mockMvc.perform(get("/api/bill/detail/{billId}", billId))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/detail/{billId} returns 200 for CUSTOMER viewing own bill")
+    void getBillDetail_customerOwn() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(get("/api/bill/detail/{billId}", billId))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/detail/{billId} returns 403 for CUSTOMER viewing other's bill")
+    void getBillDetail_customerOther() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust2", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(get("/api/bill/detail/{billId}", billId))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403))
+                    .andExpect(jsonPath("$.message").value("Forbidden"));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/detail/{billId} returns 200 for matching service role")
+    void getBillDetail_serviceRole() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getRole).thenReturn("ROLE_FLIGHT_AIRLINE");
+            mocked.when(CurrentUser::getUserId).thenReturn("airline1");
+
+            mockMvc.perform(get("/api/bill/detail/{billId}", billId))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/detail/{billId} returns 403 for mismatched service role")
+    void getBillDetail_mismatchedServiceRole() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getRole).thenReturn("ROLE_ACCOMMODATION_OWNER");
+            mocked.when(CurrentUser::getUserId).thenReturn("accommodation1");
+
+            mockMvc.perform(get("/api/bill/detail/{billId}", billId))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403))
+                    .andExpect(jsonPath("$.message").value("Forbidden"));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/bill/detail/{billId} returns 404 when bill not found")
     void getBillDetail_notFound() throws Exception {
         UUID billId = UUID.randomUUID();
         when(billRestService.getBillById(billId)).thenReturn(null);
@@ -408,12 +659,177 @@ class BillRestControllerTest {
                 .andExpect(jsonPath("$.message").value("No Bill Found"));
     }
 
-    // For payBill, similar.
+    // ==================== POST /api/bill/{billId}/pay Tests ====================
 
+    @Test
+    @DisplayName("POST /api/bill/{billId}/pay returns 200 when payment successful")
+    void payBill_success() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        var paidBill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.PAID);
 
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+        when(billRestService.payBill(eq(billId), eq("cust1"), any())).thenReturn(paidBill);
 
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
 
+            var req = new ConfirmPaymentRequestDTO();
+            req.setCustomerId("cust1");
 
-    // Add more tests for other methods, but for brevity, this covers the main ones.
+            mockMvc.perform(post("/api/bill/{billId}/pay", billId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.message").value("Payment successful"));
+        }
+    }
 
+    @Test
+    @DisplayName("POST /api/bill/{billId}/pay returns 403 when customer ID mismatch from body")
+    void payBill_customerIdMismatchBody() throws Exception {
+        UUID billId = UUID.randomUUID();
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            var req = new ConfirmPaymentRequestDTO();
+            req.setCustomerId("cust2");
+
+            mockMvc.perform(post("/api/bill/{billId}/pay", billId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403))
+                    .andExpect(jsonPath("$.message").value("Customer ID mismatch"));
+        }
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/{billId}/pay returns 404 when bill not found")
+    void payBill_billNotFound() throws Exception {
+        UUID billId = UUID.randomUUID();
+
+        when(billRestService.getBillById(billId)).thenReturn(null);
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(post("/api/bill/{billId}/pay", billId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new ConfirmPaymentRequestDTO())))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.status").value(404))
+                    .andExpect(jsonPath("$.message").value("No Bill Found"));
+        }
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/{billId}/pay returns 403 when bill customer mismatch")
+    void payBill_billCustomerMismatch() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust2", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(post("/api/bill/{billId}/pay", billId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new ConfirmPaymentRequestDTO())))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403))
+                    .andExpect(jsonPath("$.message").value("Customer ID mismatch"));
+        }
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/{billId}/pay returns 400 when insufficient balance")
+    void payBill_insufficientBalance() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+        when(billRestService.payBill(eq(billId), eq("cust1"), any()))
+                .thenThrow(new IllegalStateException("User balance insufficient, please Top Up balance."));
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(post("/api/bill/{billId}/pay", billId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new ConfirmPaymentRequestDTO())))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.status").value(400))
+                    .andExpect(jsonPath("$.message").value("User balance insufficient, please Top Up balance."));
+        }
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/{billId}/pay returns 500 on unexpected exception")
+    void payBill_exception() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+        when(billRestService.payBill(eq(billId), eq("cust1"), any()))
+                .thenThrow(new RuntimeException("unexpected error"));
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(post("/api/bill/{billId}/pay", billId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(new ConfirmPaymentRequestDTO())))
+                    .andExpect(status().isInternalServerError())
+                    .andExpect(jsonPath("$.status").value(500))
+                    .andExpect(jsonPath("$.message").value("Payment Failed. An unexpected error occurred. Please try again later."));
+        }
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/{billId}/pay returns 200 when request body is null")
+    void payBill_nullBody() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        var paidBill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.PAID);
+
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+        when(billRestService.payBill(eq(billId), eq("cust1"), any())).thenReturn(paidBill);
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(post("/api/bill/{billId}/pay", billId)
+                    .contentType(MediaType.APPLICATION_JSON))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200));
+        }
+    }
+
+    @Test
+    @DisplayName("POST /api/bill/{billId}/pay returns 200 when customerId matches JWT")
+    void payBill_customIdMatchesJwt() throws Exception {
+        UUID billId = UUID.randomUUID();
+        var bill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.UNPAID);
+        var paidBill = sampleBill(billId, "cust1", "Flight", "ref1", "desc", BigDecimal.valueOf(100.0), Bill.BillStatus.PAID);
+
+        when(billRestService.getBillById(billId)).thenReturn(bill);
+        when(billRestService.payBill(eq(billId), eq("cust1"), any())).thenReturn(paidBill);
+
+        try (var mocked = mockStatic(CurrentUser.class)) {
+            mocked.when(CurrentUser::getUserId).thenReturn("cust1");
+
+            var req = new ConfirmPaymentRequestDTO();
+            req.setCustomerId("cust1");
+
+            mockMvc.perform(post("/api/bill/{billId}/pay", billId)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200));
+        }
+    }
 }

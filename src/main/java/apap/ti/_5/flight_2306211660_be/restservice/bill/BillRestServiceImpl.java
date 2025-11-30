@@ -1,6 +1,7 @@
 package apap.ti._5.flight_2306211660_be.restservice.bill;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -196,7 +197,9 @@ public class BillRestServiceImpl implements BillRestService {
         }
 
         try {
-            WebClient wc = WebClient.create(base);
+            WebClient wc = WebClient.builder()
+                    .baseUrl(base)
+                    .build();
 
             // Build standard ConfirmPaymentRequestDTO callback payload
             ConfirmPaymentRequestDTO payload = new ConfirmPaymentRequestDTO(
@@ -221,16 +224,26 @@ public class BillRestServiceImpl implements BillRestService {
                 default -> "/payment/confirm"; // Default fallback
             };
 
+            logger.info("Sending payment callback to: {}{} for bill: {}", base, path, bill.getId());
+
             wc.post()
                     .uri(path)
                     .bodyValue(payload)
                     .retrieve()
+                    .onStatus(
+                        status -> !status.is2xxSuccessful(),
+                        clientResponse -> clientResponse.bodyToMono(String.class).flatMap(body -> {
+                            logger.error("Callback HTTP error: status={}, body={}", clientResponse.statusCode(), body);
+                            return reactor.core.publisher.Mono.error(new RuntimeException("HTTP " + clientResponse.statusCode() + ": " + body));
+                        })
+                    )
                     .bodyToMono(Object.class)
+                    .timeout(Duration.ofSeconds(5))
                     .block();
 
-            logger.info("ConfirmPayment callback sent to {}{}", base, path);
+            logger.info("ConfirmPayment callback sent successfully to {}{}", base, path);
         } catch (Exception ex) {
-            logger.warn("Failed to send confirmPayment callback to origin service {}: {}", bill.getServiceName(), ex.getMessage());
+            logger.error("Failed to send confirmPayment callback to origin service {}: {} - {}", bill.getServiceName(), ex.getClass().getSimpleName(), ex.getMessage(), ex);
         }
     }
 }
