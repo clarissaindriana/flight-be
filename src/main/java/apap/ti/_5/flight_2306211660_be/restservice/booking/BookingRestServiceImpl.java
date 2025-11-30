@@ -695,42 +695,19 @@ public class BookingRestServiceImpl implements BookingRestService {
     }
  
     @Override
+    @Transactional
     public BookingResponseDTO confirmPayment(ConfirmPaymentRequestDTO dto) {
-        if (dto == null || dto.getServiceReferenceId() == null) {
-            throw new IllegalArgumentException("Service reference ID (booking ID) is required");
-        }
-
         String bookingId = dto.getServiceReferenceId();
         
-        // Find the booking directly by serviceReferenceId
+        // Fetch booking and update status to Paid (2)
         Booking booking = bookingRepository.findById(bookingId).orElse(null);
-        if (booking == null || (booking.getIsDeleted() != null && booking.getIsDeleted())) {
-            throw new IllegalArgumentException("Booking not found");
+        if (booking != null) {
+            booking.setStatus(2); // Paid
+            booking = bookingRepository.save(booking);
+            logger.info("Booking {} status updated to Paid", bookingId);
         }
-
-        // Optional: validate customerId consistency when provided
-        if (dto.getCustomerId() != null && !dto.getCustomerId().isBlank() && !dto.getCustomerId().equals(booking.getContactEmail())) {
-            // Note: checking customerId from DTO (from Bill.customerId) for consistency
-            // This is a soft validation - we don't have customer ID on Booking, only email
-            logger.debug("Customer ID from payment: {}, booking contact email: {}", dto.getCustomerId(), booking.getContactEmail());
-        }
-
-        // Only transition Unpaid (1) -> Paid (2); if already paid, treat as idempotent
-        if (booking.getStatus() != null && booking.getStatus() != 1) {
-            if (booking.getStatus() == 2) {
-                logger.info("Booking {} already paid, returning idempotent response", bookingId);
-                return convertToBookingResponseDTO(booking);
-            }
-            throw new IllegalStateException("Booking status is " + booking.getStatus() + " and cannot be updated to paid. Only Unpaid (1) bookings can be paid.");
-        }
-
-        // Update booking status to Paid (2)
-        logger.info("Updating booking {} status from {} to Paid", bookingId, booking.getStatus());
-        booking.setStatus(2); // Paid
-        booking = bookingRepository.save(booking);
-        logger.info("Booking {} payment confirmed successfully", bookingId);
         
-        return convertToBookingResponseDTO(booking);
+        return booking != null ? convertToBookingResponseDTO(booking) : null;
     }
 
     @Override
