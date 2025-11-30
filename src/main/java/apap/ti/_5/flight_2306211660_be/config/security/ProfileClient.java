@@ -279,20 +279,21 @@ public class ProfileClient {
     }
 
         // Deduct saldo via /api/users/payment
-        public ProfileUserWrapper paymentSaldo(apap.ti._5.flight_2306211660_be.restdto.request.bill.SaldoUpdateRequestDTO request) {
-            try {
-                Mono<ProfileUserWrapper> mono = webClient.post()
-                        .uri("/api/users/payment")
-                        .bodyValue(request)
-                        .retrieve()
-                        .bodyToMono(ProfileUserWrapper.class)
-                        .onErrorReturn(null);
-    
-                return mono.block();
-            } catch (Exception ex) {
-                return null;
-            }
-        }
+                public ProfileUserWrapper paymentSaldo(apap.ti._5.flight_2306211660_be.restdto.request.bill.SaldoUpdateRequestDTO request) {
+                    try {
+                        Mono<ProfileUserWrapper> mono = webClient.post()
+                                .uri("/api/users/payment")
+                                .header("X-API-Key", "API_KEY_APAP")
+                                .bodyValue(request)
+                                .retrieve()
+                                .bodyToMono(ProfileUserWrapper.class)
+                                .onErrorReturn(null);
+        
+                        return mono.block();
+                    } catch (Exception ex) {
+                        return null;
+                    }
+                }
 
     // Update user profile: PUT /api/users/{id}
     public ProfileUserWrapper updateUser(String id, Object payload) {
