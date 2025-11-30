@@ -109,23 +109,8 @@ public class BillRestServiceImpl implements BillRestService {
 
         BigDecimal finalAmount = bill.getAmount();
  
-        // Fetch customer profile for balance (balance check is early step) via /api/users/detail
-        // using the same search key you verified works (userId).
-        BigDecimal balance = null;
-        ProfileClient.ProfileUserWrapper detailWrapper = profileClient.getUserDetail(customerIdFromToken);
-        if (detailWrapper != null && detailWrapper.getData() != null) {
-            ProfileClient.ProfileUser user = detailWrapper.getData();
-            BigDecimal extBalance = user.getBalance();
-            if (extBalance != null) {
-                balance = extBalance;
-            }
-        }
- 
-        // If we successfully obtained a balance from profile service, enforce local saldo check.
-        if (balance != null && balance.compareTo(finalAmount) < 0) {
-            // 400 with this exact message as required
-            throw new IllegalStateException("User balance insufficient, please Top Up balance.");
-        }
+        // Skip explicit profile balance fetch here and rely on external /api/users/payment
+        // (via SaldoUpdateRequestDTO) to validate and deduct saldo based on userId and amount.
 
         // TODO: If couponCode provided, call Loyalty Service to validate and compute discount
         // Currently skipped as per specification (external API not yet available).
