@@ -3,6 +3,7 @@ package apap.ti._5.flight_2306211660_be.restcontroller;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
 
 import org.junit.jupiter.api.BeforeEach;
@@ -10,6 +11,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import org.mockito.Mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -29,6 +31,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
+import apap.ti._5.flight_2306211660_be.config.security.ProfileClient;
+import apap.ti._5.flight_2306211660_be.model.Passenger;
+import apap.ti._5.flight_2306211660_be.repository.PassengerRepository;
 import apap.ti._5.flight_2306211660_be.restcontroller.passenger.PassengerRestController;
 import apap.ti._5.flight_2306211660_be.restdto.request.passenger.AddPassengerRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.passenger.UpdatePassengerRequestDTO;
@@ -45,10 +50,18 @@ class PassengerRestControllerTest {
     @Mock
     private PassengerRestService passengerRestService;
 
+    @Mock
+    private ProfileClient profileClient;
+
+    @Mock
+    private PassengerRepository passengerRepository;
+
     @BeforeEach
     void setup() {
         PassengerRestController controller = new PassengerRestController();
         ReflectionTestUtils.setField(controller, "passengerRestService", passengerRestService);
+        ReflectionTestUtils.setField(controller, "profileClient", profileClient);
+        ReflectionTestUtils.setField(controller, "passengerRepository", passengerRepository);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         // Configure ObjectMapper to support Java Time (LocalDate) in request bodies
         objectMapper.registerModule(new JavaTimeModule());
@@ -227,5 +240,122 @@ class PassengerRestControllerTest {
         mockMvc.perform(post("/api/passenger/delete/{id}", id.toString()))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    @DisplayName("GET /api/users returns 200 with users list")
+    void getAllUsers_success() throws Exception {
+        var user = new ProfileClient.ProfileUser();
+        user.setId("user1");
+        user.setName("John");
+        user.setEmail("john@example.com");
+        var wrapper = new ProfileClient.ProfileUsersWrapper();
+        wrapper.setData(List.of(user));
+        when(profileClient.getAllUsers()).thenReturn(wrapper);
+
+        mockMvc.perform(get("/api/users"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value("user1"));
+    }
+
+    @Test
+    @DisplayName("GET /api/users returns 500 on exception")
+    void getAllUsers_exception() throws Exception {
+        when(profileClient.getAllUsers()).thenThrow(new RuntimeException("profile error"));
+
+        mockMvc.perform(get("/api/users"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
+    }
+
+    @Test
+    @DisplayName("GET /api/users/{id} returns 200 when found")
+    void getUserById_found() throws Exception {
+        var user = new ProfileClient.ProfileUser();
+        user.setId("user1");
+        user.setName("John");
+        user.setEmail("john@example.com");
+        var wrapper = new ProfileClient.ProfileUserWrapper();
+        wrapper.setData(user);
+        when(profileClient.getUserById("user1")).thenReturn(wrapper);
+
+        mockMvc.perform(get("/api/users/{id}", "user1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data.id").value("user1"));
+    }
+
+    @Test
+    @DisplayName("GET /api/users/{id} returns 404 when not found")
+    void getUserById_notFound() throws Exception {
+        when(profileClient.getUserById("user1")).thenReturn(null);
+
+        mockMvc.perform(get("/api/users/{id}", "user1"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    @DisplayName("PUT /api/users/{id} returns 200 when updated")
+    void updateUserById_success() throws Exception {
+        var user = new ProfileClient.ProfileUser();
+        user.setId("user1");
+        user.setName("John Updated");
+        user.setEmail("john@example.com");
+        var wrapper = new ProfileClient.ProfileUserWrapper();
+        wrapper.setData(user);
+        when(profileClient.updateUser(eq("user1"), any())).thenReturn(wrapper);
+
+        mockMvc.perform(put("/api/users/{id}", "user1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data.name").value("John Updated"));
+    }
+
+    @Test
+    @DisplayName("PUT /api/users/{id} returns 400 when failed")
+    void updateUserById_failed() throws Exception {
+        when(profileClient.updateUser(eq("user1"), any())).thenReturn(null);
+
+        mockMvc.perform(put("/api/users/{id}", "user1")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    @DisplayName("GET /api/users/customers returns 200 and syncs passengers")
+    void getCustomersAndSync_success() throws Exception {
+        var user = new ProfileClient.ProfileUser();
+        user.setId("user1");
+        user.setName("John");
+        user.setEmail("john@example.com");
+        var wrapper = new ProfileClient.ProfileUsersWrapper();
+        wrapper.setData(List.of(user));
+        when(profileClient.getCustomers()).thenReturn(wrapper);
+        when(passengerRepository.existsByIdPassport("user1")).thenReturn(false);
+        when(passengerRepository.save(any(Passenger.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        mockMvc.perform(get("/api/users/customers"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data.length()").value(1));
+
+        verify(passengerRepository).save(any(Passenger.class));
+    }
+
+    @Test
+    @DisplayName("GET /api/users/customers returns 500 on exception")
+    void getCustomersAndSync_exception() throws Exception {
+        when(profileClient.getCustomers()).thenThrow(new RuntimeException("profile error"));
+
+        mockMvc.perform(get("/api/users/customers"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
     }
 }

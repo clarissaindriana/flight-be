@@ -299,8 +299,8 @@ public class FlightRestServiceTest {
         var f2 = flight("F6", "AL-B", "AP-B", "SUB", "DPS", now.plusHours(1), now.plusHours(2), 1, false); // stays 1
         var f3 = flight("F7", "AL-A", "AP-A", "CGK", "DPS", now.minusHours(1), now.plusMinutes(10), 2, false); // In Flight -> Finished when arrival passed
         when(flightRepository.findAll()).thenReturn(List.of(f1, f2, f3));
-        when(flightRepository.save(any(Flight.class))).thenAnswer(inv -> inv.getArgument(0));
-        when(classFlightRestService.getClassFlightsByFlight(anyString())).thenReturn(Collections.emptyList());
+        lenient().when(flightRepository.save(any(Flight.class))).thenAnswer(inv -> inv.getArgument(0));
+        lenient().when(classFlightRestService.getClassFlightsByFlight(anyString())).thenReturn(Collections.emptyList());
 
         // Filters: origin=CGK, dest=DPS, airline=AL-A, status=3, includeDeleted=true
         // var res = service.getAllFlightsWithFilters("CGK", "DPS", "AL-A", 3, true);

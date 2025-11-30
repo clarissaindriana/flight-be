@@ -18,6 +18,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -110,6 +111,34 @@ class AirplaneRestControllerTest {
                 .andExpect(jsonPath("$.data.length()").value(2))
                 .andExpect(jsonPath("$.data[0].id").value("GA-001"))
                 .andExpect(jsonPath("$.data[1].id").value("GA-002"));
+    }
+
+    @Test
+    @DisplayName("GET /api/airplane/all with search filter matching model")
+    void getAllAirplanes_filter_search_model() throws Exception {
+        var a1 = sample("GA-001", "GA", "B737", 180, 2018, false);
+        var a2 = sample("SQ-001", "SQ", "A320", 150, 2019, false);
+        when(airplaneRestService.getAllAirplanes()).thenReturn(Arrays.asList(a1, a2));
+
+        mockMvc.perform(get("/api/airplane/all").param("search", "b73"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value("GA-001"));
+    }
+
+    @Test
+    @DisplayName("GET /api/airplane/all with search filter matching airlineId")
+    void getAllAirplanes_filter_search_airlineId() throws Exception {
+        var a1 = sample("GA-001", "GA", "B737", 180, 2018, false);
+        var a2 = sample("SQ-001", "SQ", "A320", 150, 2019, false);
+        when(airplaneRestService.getAllAirplanes()).thenReturn(Arrays.asList(a1, a2));
+
+        mockMvc.perform(get("/api/airplane/all").param("search", "sq"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value("SQ-001"));
     }
 
     @Test
@@ -414,6 +443,52 @@ class AirplaneRestControllerTest {
                 .thenThrow(new RuntimeException("boom"));
 
         mockMvc.perform(post("/api/airplane/{id}/activate", "GA-ABC"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500))
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("boom")));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/airplane/{id} returns 200 when found")
+    void deleteAirplaneByDeleteVerb_found() throws Exception {
+        var resp = sample("GA-ABC", "GA", "B737", 180, 2018, true);
+        when(airplaneRestService.deleteAirplane(eq("GA-ABC"))).thenReturn(resp);
+
+        mockMvc.perform(delete("/api/airplane/{id}", "GA-ABC"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data.id").value("GA-ABC"));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/airplane/{id} returns 404 when not found")
+    void deleteAirplaneByDeleteVerb_notFound() throws Exception {
+        when(airplaneRestService.deleteAirplane(eq("X"))).thenReturn(null);
+
+        mockMvc.perform(delete("/api/airplane/{id}", "X"))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/airplane/{id} returns 400 when IllegalStateException")
+    void deleteAirplaneByDeleteVerb_illegalState() throws Exception {
+        when(airplaneRestService.deleteAirplane(eq("GA-ABC")))
+                .thenThrow(new IllegalStateException("Pesawat tidak dapat dinonaktifkan"));
+
+        mockMvc.perform(delete("/api/airplane/{id}", "GA-ABC"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value(Matchers.containsString("Pesawat")));
+    }
+
+    @Test
+    @DisplayName("DELETE /api/airplane/{id} returns 500 on other exceptions")
+    void deleteAirplaneByDeleteVerb_exception() throws Exception {
+        when(airplaneRestService.deleteAirplane(eq("GA-ABC")))
+                .thenThrow(new RuntimeException("boom"));
+
+        mockMvc.perform(delete("/api/airplane/{id}", "GA-ABC"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.message").value(Matchers.containsString("boom")));

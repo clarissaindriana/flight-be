@@ -1,54 +1,56 @@
 package apap.ti._5.flight_2306211660_be.restcontroller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-
-import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
-import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
-import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingResponseDTO;
-import apap.ti._5.flight_2306211660_be.restcontroller.booking.BookingRestController;
-import apap.ti._5.flight_2306211660_be.restservice.booking.BookingRestService;
-import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
-import apap.ti._5.flight_2306211660_be.model.Booking;
+import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-
+import static org.mockito.ArgumentMatchers.any;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.MockedStatic;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 import org.mockito.junit.jupiter.MockitoExtension;
-
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.json.MappingJackson2HttpMessageConverter;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
-
-import java.math.BigDecimal;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.*;
-
-import static org.mockito.ArgumentMatchers.*;
-import static org.mockito.Mockito.when;
-import static org.mockito.Mockito.verify;
-
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+
+import apap.ti._5.flight_2306211660_be.model.Booking;
+import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
+import apap.ti._5.flight_2306211660_be.restcontroller.booking.BookingRestController;
+import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingResponseDTO;
+import apap.ti._5.flight_2306211660_be.restservice.booking.BookingRestService;
 
 /**
  * Standalone MockMvc tests to push coverage for
  * [BookingRestController](flight-2306211660-be/src/main/java/apap/ti/_5/flight_2306211660_be/restcontroller/booking/BookingRestController.java:1)
  */
 @ExtendWith(MockitoExtension.class)
-public class BookingRestControllerTest {
+class BookingRestControllerTest {
 
     @Mock
     private BookingRestService bookingRestService;
@@ -76,6 +78,11 @@ public class BookingRestControllerTest {
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setMessageConverters(jsonConverter)
                 .build();
+
+        // Mock security context with SUPERADMIN role
+        var auth = new UsernamePasswordAuthenticationToken("admin", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_SUPERADMIN")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
     }
 
     private String toJson(Object o) throws Exception {
@@ -102,31 +109,31 @@ public class BookingRestControllerTest {
     @Test
     @DisplayName("GET /api/booking without params -> 200, calls getAllBookings(includeDeleted=null)")
     void getAll_noParams() throws Exception {
-        when(bookingRestService.getAllBookings(null)).thenReturn(Collections.emptyList());
+        when(bookingRestService.getAllBookings(null, null, null, null)).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/booking"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200));
 
-        verify(bookingRestService).getAllBookings(null);
+        verify(bookingRestService).getAllBookings(null, null, null, null);
     }
 
     @Test
     @DisplayName("GET /api/booking with flightId only -> 200, calls getBookingsByFlight(flightId, null)")
     void getAll_withFlightId() throws Exception {
-        when(bookingRestService.getBookingsByFlight("FL-1", null)).thenReturn(Collections.emptyList());
+        when(bookingRestService.getBookingsByFlight("FL-1", null, null, null, null)).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/booking").param("flightId", "FL-1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200));
 
-        verify(bookingRestService).getBookingsByFlight("FL-1", null);
+        verify(bookingRestService).getBookingsByFlight("FL-1", null, null, null, null);
     }
 
     @Test
     @DisplayName("GET /api/booking with flightId and includeDeleted=true -> 200")
     void getAll_withFlightIdIncludeDeleted() throws Exception {
-        when(bookingRestService.getBookingsByFlight("FL-1", true)).thenReturn(Collections.emptyList());
+        when(bookingRestService.getBookingsByFlight("FL-1", true, null, null, null)).thenReturn(Collections.emptyList());
 
         mockMvc.perform(get("/api/booking")
                         .param("flightId", "FL-1")
@@ -134,7 +141,53 @@ public class BookingRestControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value(200));
 
-        verify(bookingRestService).getBookingsByFlight("FL-1", true);
+        verify(bookingRestService).getBookingsByFlight("FL-1", true, null, null, null);
+    }
+
+    @Test
+    @DisplayName("GET /api/booking filters by customer email when role is CUSTOMER")
+    void getAll_customerOwnershipFilter() throws Exception {
+        var booking1 = BookingResponseDTO.builder()
+                .id("B-1")
+                .flightId("FL-1")
+                .classFlightId(10)
+                .classType("economy")
+                .contactEmail("customer@x.com")
+                .contactPhone("08123")
+                .passengerCount(1)
+                .status(1)
+                .totalPrice(new BigDecimal("1000000"))
+                .isDeleted(false)
+                .build();
+        var booking2 = BookingResponseDTO.builder()
+                .id("B-2")
+                .flightId("FL-1")
+                .classFlightId(10)
+                .classType("economy")
+                .contactEmail("other@y.com")
+                .contactPhone("08123")
+                .passengerCount(1)
+                .status(1)
+                .totalPrice(new BigDecimal("1000000"))
+                .isDeleted(false)
+                .build();
+        when(bookingRestService.getAllBookings(null, null, null, null)).thenReturn(List.of(booking1, booking2));
+
+        // Set CUSTOMER role for this test
+        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getEmail).thenReturn("customer@x.com");
+
+            mockMvc.perform(get("/api/booking"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.length()").value(1))
+                    .andExpect(jsonPath("$.data[0].id").value("B-1"));
+        }
     }
 
     // GET /api/booking/{id}
@@ -158,6 +211,30 @@ public class BookingRestControllerTest {
         mockMvc.perform(get("/api/booking/NF"))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.status").value(404));
+    }
+
+    @Test
+    @DisplayName("GET /api/booking/{id} customer forbidden -> 403")
+    void get_one_customerForbidden() throws Exception {
+        var booking = BookingResponseDTO.builder()
+                .id("B-1")
+                .contactEmail("other@x.com")
+                .build();
+        when(bookingRestService.getBooking("B-1")).thenReturn(booking);
+
+        // Set CUSTOMER role
+        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getEmail).thenReturn("customer@x.com");
+
+            mockMvc.perform(get("/api/booking/B-1"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403));
+        }
     }
 
     // POST /api/booking/create
@@ -316,7 +393,7 @@ public class BookingRestControllerTest {
                 .contactPhone("08123")
                 .build();
 
-        when(bookingRestService.updateBooking(any(UpdateBookingRequestDTO.class))).thenReturn(null);
+        org.mockito.Mockito.lenient().when(bookingRestService.updateBooking(any(UpdateBookingRequestDTO.class))).thenReturn(null);
 
         mockMvc.perform(put("/api/booking/update")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -361,6 +438,37 @@ public class BookingRestControllerTest {
                         .content(toJson(req)))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.status").value(500));
+    }
+
+    @Test
+    @DisplayName("PUT /api/booking/update customer forbidden -> 403")
+    void update_customerForbidden() throws Exception {
+        var existing = BookingResponseDTO.builder()
+                .id("B-1")
+                .contactEmail("other@x.com")
+                .build();
+        when(bookingRestService.getBooking("B-1")).thenReturn(existing);
+
+        UpdateBookingRequestDTO req = UpdateBookingRequestDTO.builder()
+                .id("B-1")
+                .contactEmail("new@y.com")
+                .build();
+
+        // Set CUSTOMER role
+        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getEmail).thenReturn("customer@x.com");
+
+            mockMvc.perform(put("/api/booking/update")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(toJson(req)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403));
+        }
     }
 
     // GET /api/booking/statistics
@@ -431,7 +539,7 @@ public class BookingRestControllerTest {
     @Test
     @DisplayName("POST /api/booking/delete/{id} not found -> 404")
     void delete_notFound() throws Exception {
-        when(bookingRestService.deleteBooking("NF")).thenReturn(null);
+        org.mockito.Mockito.lenient().when(bookingRestService.deleteBooking("NF")).thenReturn(null);
 
         mockMvc.perform(post("/api/booking/delete/NF"))
                 .andExpect(status().isNotFound())
@@ -456,5 +564,29 @@ public class BookingRestControllerTest {
         mockMvc.perform(post("/api/booking/delete/ERR2"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.status").value(500));
+    }
+
+    @Test
+    @DisplayName("POST /api/booking/delete/{id} customer forbidden -> 403")
+    void delete_customerForbidden() throws Exception {
+        var existing = BookingResponseDTO.builder()
+                .id("B-1")
+                .contactEmail("other@x.com")
+                .build();
+        when(bookingRestService.getBooking("B-1")).thenReturn(existing);
+
+        // Set CUSTOMER role
+        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getEmail).thenReturn("customer@x.com");
+
+            mockMvc.perform(post("/api/booking/delete/B-1"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403));
+        }
     }
 }

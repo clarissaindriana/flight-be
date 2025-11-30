@@ -22,6 +22,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
@@ -32,8 +35,10 @@ import java.util.List;
 
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.MockedStatic;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete; // not used but kept for parity
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -64,6 +69,11 @@ public class FlightRestControllerTest {
         objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule());
         objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+        // Mock security context with SUPERADMIN role
+        var auth = new UsernamePasswordAuthenticationToken("admin", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_SUPERADMIN")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
     }
 
     private String toJson(Object o) throws Exception {
@@ -89,47 +99,60 @@ public class FlightRestControllerTest {
                 .build();
     }
 
-//     @Test
-//     @DisplayName("GET /api/flight/all without filters -> 200")
-//     void getAllFlights_ok_noFilters() throws Exception {
-//         when(flightRestService.getAllFlightsWithFilters(null, null, null, null, null))
-//                 .thenReturn(Collections.emptyList());
+    @Test
+    @DisplayName("GET /api/flight/all without filters -> 200")
+    void getAllFlights_ok_noFilters() throws Exception {
+        when(flightRestService.getAllFlightsWithFilters(null, null, null, null, null, null))
+                .thenReturn(Collections.emptyList());
 
-//         mockMvc.perform(get("/api/flight/all"))
-//                 .andExpect(status().isOk())
-//                 .andExpect(jsonPath("$.status").value(200));
+        mockMvc.perform(get("/api/flight/all"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200));
 
-//         verify(flightRestService).getAllFlightsWithFilters(null, null, null, null, null);
-//     }
+        verify(flightRestService).getAllFlightsWithFilters(null, null, null, null, null, null);
+    }
 
-//     @Test
-//     @DisplayName("GET /api/flight/all with filters -> 200 and calls service with params")
-//     void getAllFlights_ok_withFilters() throws Exception {
-//         when(flightRestService.getAllFlightsWithFilters("CGK", "DPS", "AL-1", 3, true))
-//                 .thenReturn(Collections.emptyList());
+    @Test
+    @DisplayName("GET /api/flight/all with filters -> 200 and calls service with params")
+    void getAllFlights_ok_withFilters() throws Exception {
+        when(flightRestService.getAllFlightsWithFilters("CGK", "DPS", "AL-1", 3, true, null))
+                .thenReturn(Collections.emptyList());
 
-//         mockMvc.perform(get("/api/flight/all")
-//                         .param("originAirportCode", "CGK")
-//                         .param("destinationAirportCode", "DPS")
-//                         .param("airlineId", "AL-1")
-//                         .param("status", "3")
-//                         .param("includeDeleted", "true"))
-//                 .andExpect(status().isOk())
-//                 .andExpect(jsonPath("$.status").value(200));
+        mockMvc.perform(get("/api/flight/all")
+                        .param("originAirportCode", "CGK")
+                        .param("destinationAirportCode", "DPS")
+                        .param("airlineId", "AL-1")
+                        .param("status", "3")
+                        .param("includeDeleted", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200));
 
-//         verify(flightRestService).getAllFlightsWithFilters("CGK", "DPS", "AL-1", 3, true);
-//     }
+        verify(flightRestService).getAllFlightsWithFilters("CGK", "DPS", "AL-1", 3, true, null);
+    }
 
-//     @Test
-//     @DisplayName("GET /api/flight/all -> 500 on service exception")
-//     void getAllFlights_internalError() throws Exception {
-//         when(flightRestService.getAllFlightsWithFilters(any(), any(), any(), any(), any()))
-//                 .thenThrow(new RuntimeException("boom"));
+    @Test
+    @DisplayName("GET /api/flight/all -> 500 on service exception")
+    void getAllFlights_internalError() throws Exception {
+        when(flightRestService.getAllFlightsWithFilters(any(), any(), any(), any(), any(), any()))
+                .thenThrow(new RuntimeException("boom"));
 
-//         mockMvc.perform(get("/api/flight/all"))
-//                 .andExpect(status().isInternalServerError())
-//                 .andExpect(jsonPath("$.status").value(500));
-//     }
+        mockMvc.perform(get("/api/flight/all"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
+    }
+
+    @Test
+    @DisplayName("GET /api/flight/all with includeDeleted forbidden for customer -> 403")
+    void getAllFlights_includeDeleted_forbidden() throws Exception {
+        // Set CUSTOMER role for this test
+        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        mockMvc.perform(get("/api/flight/all").param("includeDeleted", "true"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+    }
 
     @Test
     @DisplayName("GET /api/flight/{id} found -> 200")
@@ -414,5 +437,69 @@ public class FlightRestControllerTest {
         mockMvc.perform(post("/api/flight/delete/ERR2"))
                 .andExpect(status().isInternalServerError())
                 .andExpect(jsonPath("$.status").value(500));
+    }
+
+    @Test
+    @DisplayName("GET /api/flight/active/today returns 200 with count")
+    void getActiveFlightsToday_success() throws Exception {
+        when(flightRestService.getActiveFlightsTodayCount()).thenReturn(5L);
+
+        mockMvc.perform(get("/api/flight/active/today"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data").value(5))
+                .andExpect(jsonPath("$.message").value("Active flights for today retrieved"));
+    }
+
+    @Test
+    @DisplayName("GET /api/flight/active/today Exception -> 500")
+    void getActiveFlightsToday_exception() throws Exception {
+        when(flightRestService.getActiveFlightsTodayCount()).thenThrow(new RuntimeException("db error"));
+
+        mockMvc.perform(get("/api/flight/active/today"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500))
+                .andExpect(jsonPath("$.message").value("Error: db error"));
+    }
+
+    @Test
+    @DisplayName("GET /api/flight/reminder customer forbidden when no userId")
+    void getFlightReminders_customerForbidden() throws Exception {
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getUserId).thenReturn(null);
+
+            mockMvc.perform(get("/api/flight/reminder"))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403));
+        }
+    }
+
+    @Test
+    @DisplayName("GET /api/flight/reminder success with customer filter")
+    void getFlightReminders_success() throws Exception {
+        var reminder = apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightReminderResponseDTO.builder()
+                .flightNumber("FL-1")
+                .airline("Garuda")
+                .origin("CGK")
+                .destination("DPS")
+                .departureTime(LocalDateTime.now().plusHours(2))
+                .remainingTimeMinutes(120L)
+                .status(1)
+                .totalPaidBookings(5L)
+                .totalUnpaidBookings(2L)
+                .build();
+        when(flightRestService.getFlightReminders(3, "user123")).thenReturn(List.of(reminder));
+
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getUserId).thenReturn("user123");
+
+            mockMvc.perform(get("/api/flight/reminder"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value(200))
+                    .andExpect(jsonPath("$.data.length()").value(1))
+                    .andExpect(jsonPath("$.data[0].flightNumber").value("FL-1"));
+        }
     }
 }

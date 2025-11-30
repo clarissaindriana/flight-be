@@ -292,4 +292,27 @@ class AirlineRestControllerTest {
                 .andExpect(jsonPath("$.status").value(500))
                 .andExpect(jsonPath("$.message").value(Matchers.containsString("fail")));
     }
+
+    @Test
+    @DisplayName("GET /api/airline/total returns 200 with total count")
+    void getTotalAirlines_success() throws Exception {
+        when(airlineRestService.getTotalAirlines()).thenReturn(5L);
+
+        mockMvc.perform(get("/api/airline/total"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data").value(5))
+                .andExpect(jsonPath("$.message").value("Total airlines retrieved"));
+    }
+
+    @Test
+    @DisplayName("GET /api/airline/total returns 500 when exception thrown")
+    void getTotalAirlines_exception() throws Exception {
+        when(airlineRestService.getTotalAirlines()).thenThrow(new RuntimeException("db error"));
+
+        mockMvc.perform(get("/api/airline/total"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500))
+                .andExpect(jsonPath("$.message").value("Error: db error"));
+    }
 }

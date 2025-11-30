@@ -228,4 +228,17 @@ public class AirlineRestServiceTest {
         verify(airlineRepository).findById("XX");
         verify(airlineRepository, never()).save(any(Airline.class));
     }
+
+    @Test
+    void testGetTotalAirlines() {
+        // Arrange
+        when(airlineRepository.count()).thenReturn(10L);
+
+        // Act
+        long result = airlineRestService.getTotalAirlines();
+
+        // Assert
+        assertEquals(10L, result);
+        verify(airlineRepository).count();
+    }
 }
