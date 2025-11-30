@@ -2,7 +2,6 @@ package apap.ti._5.flight_2306211660_be.restcontroller;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 
@@ -14,6 +13,7 @@ import static org.mockito.ArgumentMatchers.any;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,7 +37,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 
-import apap.ti._5.flight_2306211660_be.model.Booking;
 import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
 import apap.ti._5.flight_2306211660_be.restcontroller.booking.BookingRestController;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
@@ -45,7 +44,6 @@ import apap.ti._5.flight_2306211660_be.restdto.request.booking.ConfirmPaymentReq
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingResponseDTO;
 import apap.ti._5.flight_2306211660_be.restservice.booking.BookingRestService;
-import static org.mockito.Mockito.lenient;
 
 /**
  * Standalone MockMvc tests to push coverage for
@@ -60,6 +58,9 @@ class BookingRestControllerTest {
     @Mock
     private BookingRepository bookingRepository;
 
+    @Mock
+    private apap.ti._5.flight_2306211660_be.restservice.bill.BillRestService billRestService;
+
     @InjectMocks
     private BookingRestController controller;
 
@@ -71,6 +72,7 @@ class BookingRestControllerTest {
         controller = new BookingRestController();
         ReflectionTestUtils.setField(controller, "bookingRestService", bookingRestService);
         ReflectionTestUtils.setField(controller, "bookingRepository", bookingRepository);
+        ReflectionTestUtils.setField(controller, "billRestService", billRestService);
 
         mapper = new ObjectMapper();
         mapper.registerModule(new JavaTimeModule());
@@ -197,6 +199,20 @@ class BookingRestControllerTest {
         }
     }
 
+    @Test
+    @DisplayName("GET /api/booking with includeDeleted=true and CUSTOMER role -> 403")
+    void getAll_includeDeleted_customerForbidden() throws Exception {
+        // Set CUSTOMER role
+        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        mockMvc.perform(get("/api/booking")
+                        .param("includeDeleted", "true"))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+    }
+
     // GET /api/booking/{id}
 
     @Test
@@ -265,6 +281,7 @@ class BookingRestControllerTest {
                 ))
                 .build();
 
+        lenient().when(billRestService.createBill(any())).thenReturn(null);
         when(bookingRestService.createBooking(any(AddBookingRequestDTO.class))).thenReturn(bookingDTO("NEW-1"));
 
         mockMvc.perform(post("/api/booking/create")
@@ -597,7 +614,7 @@ class BookingRestControllerTest {
     @DisplayName("POST /api/booking/payment/confirm returns 200 on success")
     void confirmPayment_ok() throws Exception {
         var req = new ConfirmPaymentRequestDTO();
-        req.setBillId(java.util.UUID.randomUUID());
+        req.setServiceReferenceId(java.util.UUID.randomUUID().toString());
         req.setCustomerId("cust1");
 
         when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class))).thenReturn(bookingDTO("B-1"));
@@ -614,7 +631,7 @@ class BookingRestControllerTest {
     @DisplayName("POST /api/booking/payment/confirm throws IllegalArgumentException")
     void confirmPayment_illegalArgument() throws Exception {
         var req = new ConfirmPaymentRequestDTO();
-        req.setBillId(java.util.UUID.randomUUID());
+        req.setServiceReferenceId(java.util.UUID.randomUUID().toString());
         req.setCustomerId("cust1");
 
         when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class)))
@@ -631,7 +648,7 @@ class BookingRestControllerTest {
     @DisplayName("POST /api/booking/payment/confirm throws SecurityException")
     void confirmPayment_securityException() throws Exception {
         var req = new ConfirmPaymentRequestDTO();
-        req.setBillId(java.util.UUID.randomUUID());
+        req.setServiceReferenceId(java.util.UUID.randomUUID().toString());
         req.setCustomerId("cust1");
 
         when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class)))
@@ -648,7 +665,7 @@ class BookingRestControllerTest {
     @DisplayName("POST /api/booking/payment/confirm throws IllegalStateException")
     void confirmPayment_illegalState() throws Exception {
         var req = new ConfirmPaymentRequestDTO();
-        req.setBillId(java.util.UUID.randomUUID());
+        req.setServiceReferenceId(java.util.UUID.randomUUID().toString());
         req.setCustomerId("cust1");
 
         when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class)))
@@ -665,7 +682,7 @@ class BookingRestControllerTest {
     @DisplayName("POST /api/booking/payment/confirm throws generic Exception")
     void confirmPayment_exception() throws Exception {
         var req = new ConfirmPaymentRequestDTO();
-        req.setBillId(java.util.UUID.randomUUID());
+        req.setServiceReferenceId(java.util.UUID.randomUUID().toString());
         req.setCustomerId("cust1");
 
         when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class)))
@@ -699,6 +716,7 @@ class BookingRestControllerTest {
                 ))
                 .build();
 
+        lenient().when(billRestService.createBill(any())).thenReturn(null);
         lenient().when(bookingRestService.createBooking(any(AddBookingRequestDTO.class))).thenReturn(bookingDTO("NEW-1"));
 
         var auth = new UsernamePasswordAuthenticationToken("customer", "password",
@@ -767,6 +785,7 @@ class BookingRestControllerTest {
                 ))
                 .build();
 
+        lenient().when(billRestService.createBill(any())).thenReturn(null);
         lenient().when(bookingRestService.createBooking(any(AddBookingRequestDTO.class))).thenReturn(bookingDTO("NEW-1"));
 
         try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
@@ -799,6 +818,7 @@ class BookingRestControllerTest {
                 ))
                 .build();
 
+        lenient().when(billRestService.createBill(any())).thenReturn(null);
         lenient().when(bookingRestService.createBooking(any(AddBookingRequestDTO.class))).thenReturn(bookingDTO("NEW-1"));
 
         var auth = new UsernamePasswordAuthenticationToken("customer", "password",

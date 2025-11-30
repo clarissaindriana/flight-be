@@ -7,6 +7,7 @@ import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequ
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.ConfirmPaymentRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingResponseDTO;
 
+import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.model.Booking;
 import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
 import apap.ti._5.flight_2306211660_be.restservice.booking.BookingRestService;
@@ -92,6 +93,20 @@ public class BookingRestController {
             } else {
                 bookings = List.of();
             }
+        }
+
+        // Adjust booking status based on bill status
+        if (role != null && role.contains("ROLE_CUSTOMER")) {
+            // For customers, fetch their bills and adjust booking statuses
+            String customerId = CurrentUser.getUserId();
+            if (customerId != null) {
+                List<Bill> bills = billRestService.getCustomerBills(customerId, null, null, null);
+                adjustBookingStatuses(bookings, bills);
+            }
+        } else if (role != null && (role.contains("ROLE_SUPERADMIN") || role.contains("ROLE_FLIGHT_AIRLINE"))) {
+            // For superadmin or flight_airline, fetch all flight bills and adjust all booking statuses
+            List<Bill> bills = billRestService.getServiceBills("Flight", null, null);
+            adjustBookingStatuses(bookings, bills);
         }
 
         baseResponseDTO.setStatus(HttpStatus.OK.value());
@@ -414,6 +429,21 @@ public class BookingRestController {
             logger.error("Error Type: {}", ex.getClass().getSimpleName());
             logger.error("Error Message: {}", ex.getMessage());
             return ResponseEntity.ok().build();
+        }
+    }
+
+    private void adjustBookingStatuses(List<BookingResponseDTO> bookings, List<Bill> bills) {
+        // Create a map of serviceReferenceId to bill status for quick lookup
+        Map<String, Bill.BillStatus> billStatusMap = bills.stream()
+                .collect(Collectors.toMap(Bill::getServiceReferenceId, Bill::getStatus));
+
+        // Adjust booking status based on bill status
+        for (BookingResponseDTO booking : bookings) {
+            Bill.BillStatus billStatus = billStatusMap.get(booking.getId());
+            if (billStatus == Bill.BillStatus.PAID) {
+                booking.setStatus(2); // Paid
+            }
+            // If bill is UNPAID or no bill found, keep the current status (1 = Unpaid)
         }
     }
 }

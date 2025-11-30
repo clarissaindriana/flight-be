@@ -155,6 +155,21 @@ public class BookingRestServiceTest {
     }
 
     @Test
+    @DisplayName("createBooking: passenger count <=0 -> IllegalArgumentException")
+    void createBooking_passengerCountZero() {
+        AddBookingRequestDTO dto = AddBookingRequestDTO.builder()
+                .flightId("FL-1").classFlightId(10).passengerCount(0)
+                .passengers(List.of(AddPassengerRequestDTO.builder().idPassport("P1").fullName("A").build()))
+                .build();
+
+        when(flightRepository.findById("FL-1")).thenReturn(Optional.of(flight("FL-1", "CGK", "DPS", 1, false)));
+        when(classFlightRepository.findById(10)).thenReturn(Optional.of(classFlight(10, "economy", 10, 10, "1000000")));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.createBooking(dto));
+        assertTrue(ex.getMessage().contains("Passenger count must be greater than zero"));
+    }
+
+    @Test
     @DisplayName("createBooking: seatIds size mismatch -> IllegalArgumentException")
     void createBooking_seatIdsMismatch() {
         AddBookingRequestDTO dto = AddBookingRequestDTO.builder()
@@ -188,6 +203,40 @@ public class BookingRestServiceTest {
 
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.createBooking(dto));
         assertTrue(ex.getMessage().contains("Number of passengers does not match passenger count"));
+    }
+
+    @Test
+    @DisplayName("createBooking: seat not found -> IllegalArgumentException")
+    void createBooking_seatNotFound() {
+        AddBookingRequestDTO dto = AddBookingRequestDTO.builder()
+                .flightId("FL-1").classFlightId(10).passengerCount(1)
+                .seatIds(List.of(999))
+                .passengers(List.of(AddPassengerRequestDTO.builder().idPassport("P1").fullName("A").build()))
+                .build();
+
+        when(flightRepository.findById("FL-1")).thenReturn(Optional.of(flight("FL-1", "CGK", "DPS", 1, false)));
+        when(classFlightRepository.findById(10)).thenReturn(Optional.of(classFlight(10, "economy", 10, 10, "1000000")));
+        when(seatRepository.findById(999)).thenReturn(Optional.empty());
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.createBooking(dto));
+        assertTrue(ex.getMessage().contains("Seat with ID 999 does not exist"));
+    }
+
+    @Test
+    @DisplayName("createBooking: seat already booked -> IllegalArgumentException")
+    void createBooking_seatBooked() {
+        AddBookingRequestDTO dto = AddBookingRequestDTO.builder()
+                .flightId("FL-1").classFlightId(10).passengerCount(1)
+                .seatIds(List.of(1))
+                .passengers(List.of(AddPassengerRequestDTO.builder().idPassport("P1").fullName("A").build()))
+                .build();
+
+        when(flightRepository.findById("FL-1")).thenReturn(Optional.of(flight("FL-1", "CGK", "DPS", 1, false)));
+        when(classFlightRepository.findById(10)).thenReturn(Optional.of(classFlight(10, "economy", 10, 10, "1000000")));
+        when(seatRepository.findById(1)).thenReturn(Optional.of(seat(1, 10, "EC001", true, UUID.randomUUID())));
+
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class, () -> service.createBooking(dto));
+        assertTrue(ex.getMessage().contains("Seat with ID 1 is already booked"));
     }
 
     @Test
@@ -296,6 +345,59 @@ public class BookingRestServiceTest {
         assertEquals("FL-1-CGK-DPS-006", res.getId());
         verify(seatRepository, times(2)).save(any(Seat.class));
         verify(classFlightRepository).save(any(ClassFlight.class));
+    }
+
+    @Test
+    @DisplayName("createBooking: success with existing passenger")
+    void createBooking_success_existingPassenger() {
+        AddBookingRequestDTO dto = AddBookingRequestDTO.builder()
+                .flightId("FL-1").classFlightId(10).passengerCount(1)
+                .contactEmail("e@x.com").contactPhone("08123")
+                .passengers(List.of(
+                        AddPassengerRequestDTO.builder().idPassport("P1").fullName("Existing A").build()
+                ))
+                .build();
+
+        // Flight and classFlight valid
+        when(flightRepository.findById("FL-1")).thenReturn(Optional.of(flight("FL-1", "CGK", "DPS", 1, false)));
+        when(classFlightRepository.findById(10)).thenReturn(Optional.of(classFlight(10, "economy", 10, 10, "1000000")));
+
+        // Booking code generation
+        when(bookingRepository.findMaxBookingNumberByPrefix("FL-1-CGK-DPS-")).thenReturn(null);
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> {
+            Booking b = inv.getArgument(0);
+            if (b.getId() == null) b.setId("FL-1-CGK-DPS-001");
+            return b;
+        });
+
+        // Passenger exists
+        UUID existingP1 = UUID.randomUUID();
+        when(passengerRepository.existsByIdPassport("P1")).thenReturn(true);
+        when(passengerRepository.findByIdPassport("P1")).thenReturn(Passenger.builder().id(existingP1).fullName("Existing A").idPassport("P1").build());
+
+        // Booking-passengers
+        when(bookingPassengerRepository.findByBookingId("FL-1-CGK-DPS-001"))
+                .thenReturn(List.of(
+                        BookingPassenger.builder().bookingId("FL-1-CGK-DPS-001").passengerId(existingP1).build()
+                ));
+
+        // Available seats
+        List<Seat> seats = List.of(seat(1, 10, "EC001", false, null));
+        when(seatRepository.findAll()).thenReturn(seats);
+        when(seatRepository.save(any(Seat.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        // Update classFlight
+        when(classFlightRepository.save(any(ClassFlight.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        BookingResponseDTO res = service.createBooking(dto);
+
+        assertNotNull(res);
+        assertEquals("FL-1-CGK-DPS-001", res.getId());
+        assertEquals(1, res.getPassengerCount());
+        verify(seatRepository, times(1)).save(any(Seat.class));
+        verify(classFlightRepository).save(any(ClassFlight.class));
+        // Verify no new passenger saved
+        verify(passengerRepository, never()).save(any(Passenger.class));
     }
 
     // -------------------- simple getters --------------------
@@ -510,6 +612,42 @@ public class BookingRestServiceTest {
         assertNotNull(res);
         assertEquals("U9", res.getId());
         verify(seatRepository, times(2)).save(any(Seat.class));
+        verify(bookingRepository, atLeastOnce()).save(any(Booking.class));
+    }
+
+    @Test
+    @DisplayName("updateBooking: success with passenger updates")
+    void updateBooking_success_withPassengerUpdates() {
+        // Booking with 1 passenger
+        Booking existing = booking("U10", "FL-1", 10, 1, 1, false);
+        when(bookingRepository.findById("U10")).thenReturn(Optional.of(existing));
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(flightRepository.findById("FL-1")).thenReturn(Optional.of(flight("FL-1", "CGK", "DPS", 1, false)));
+
+        UUID p1 = UUID.randomUUID();
+        when(bookingPassengerRepository.findByBookingId("U10"))
+                .thenReturn(List.of(BookingPassenger.builder().bookingId("U10").passengerId(p1).build()));
+
+        // For passenger update
+        when(passengerRepository.findById(p1)).thenReturn(Optional.of(Passenger.builder().id(p1).fullName("Old").build()));
+        when(passengerRepository.save(any(Passenger.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        when(seatRepository.findAll()).thenReturn(List.of(seat(1, 10, "EC001", false, null)));
+        when(seatRepository.save(any(Seat.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        when(classFlightRepository.findById(10)).thenReturn(Optional.of(classFlight(10, "economy", 10, 8, "1000000")));
+
+        UpdateBookingRequestDTO dto = UpdateBookingRequestDTO.builder()
+                .id("U10").contactEmail("new@x.com").contactPhone("08xx")
+                .passengers(List.of(apap.ti._5.flight_2306211660_be.restdto.request.passenger.UpdatePassengerRequestDTO.builder()
+                        .id(p1).fullName("New Name").birthDate(java.time.LocalDate.now()).gender(1).idPassport("P1").build()))
+                .build();
+
+        BookingResponseDTO res = service.updateBooking(dto);
+
+        assertNotNull(res);
+        assertEquals("U10", res.getId());
+        verify(passengerRepository).save(any(Passenger.class));
         verify(bookingRepository, atLeastOnce()).save(any(Booking.class));
     }
 
