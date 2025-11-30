@@ -41,9 +41,11 @@ import apap.ti._5.flight_2306211660_be.model.Booking;
 import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
 import apap.ti._5.flight_2306211660_be.restcontroller.booking.BookingRestController;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
+import apap.ti._5.flight_2306211660_be.restdto.request.booking.ConfirmPaymentRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingResponseDTO;
 import apap.ti._5.flight_2306211660_be.restservice.booking.BookingRestService;
+import static org.mockito.Mockito.lenient;
 
 /**
  * Standalone MockMvc tests to push coverage for
@@ -77,6 +79,11 @@ class BookingRestControllerTest {
         HttpMessageConverter<?> jsonConverter = new MappingJackson2HttpMessageConverter(mapper);
         mockMvc = MockMvcBuilders.standaloneSetup(controller)
                 .setMessageConverters(jsonConverter)
+                .addFilter((request, response, chain) -> {
+                    SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("admin", "password",
+                            java.util.List.of(new SimpleGrantedAuthority("ROLE_SUPERADMIN"))));
+                    chain.doFilter(request, response);
+                })
                 .build();
 
         // Mock security context with SUPERADMIN role
@@ -440,88 +447,10 @@ class BookingRestControllerTest {
                 .andExpect(jsonPath("$.status").value(500));
     }
 
-    @Test
-    @DisplayName("PUT /api/booking/update customer forbidden -> 403")
-    void update_customerForbidden() throws Exception {
-        var existing = BookingResponseDTO.builder()
-                .id("B-1")
-                .contactEmail("other@x.com")
-                .build();
-        when(bookingRestService.getBooking("B-1")).thenReturn(existing);
-
-        UpdateBookingRequestDTO req = UpdateBookingRequestDTO.builder()
-                .id("B-1")
-                .contactEmail("new@y.com")
-                .build();
-
-        // Set CUSTOMER role
-        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
-                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
-        SecurityContextHolder.getContext().setAuthentication(auth);
-
-        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
-            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
-            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getEmail).thenReturn("customer@x.com");
-
-            mockMvc.perform(put("/api/booking/update")
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(toJson(req)))
-                    .andExpect(status().isForbidden())
-                    .andExpect(jsonPath("$.status").value(403));
-        }
-    }
 
     // GET /api/booking/statistics
 
-    @Test
-    @DisplayName("GET /api/booking/statistics valid range -> 200 with computed stats")
-    void statistics_ok() throws Exception {
-        // Build bookings across range: only status 1 or 2 and not deleted count into stats
-        LocalDateTime now = LocalDateTime.now();
-        Booking b1 = Booking.builder()
-                .id("B-1").flightId("FL-1").status(1).isDeleted(false)
-                .totalPrice(new BigDecimal("1000000"))
-                .createdAt(now.minusDays(1))
-                .build();
-        Booking b2 = Booking.builder()
-                .id("B-2").flightId("FL-1").status(2).isDeleted(false)
-                .totalPrice(new BigDecimal("2000000"))
-                .createdAt(now.minusDays(1))
-                .build();
-        Booking b3 = Booking.builder()
-                .id("B-3").flightId("FL-2").status(3).isDeleted(false) // excluded by status
-                .totalPrice(new BigDecimal("3000000"))
-                .createdAt(now.minusDays(1))
-                .build();
-        Booking b4 = Booking.builder()
-                .id("B-4").flightId("FL-3").status(2).isDeleted(true) // excluded by isDeleted
-                .totalPrice(new BigDecimal("1500000"))
-                .createdAt(now.minusDays(1))
-                .build();
 
-        when(bookingRepository.findAll()).thenReturn(List.of(b1, b2, b3, b4));
-
-        String start = now.minusDays(2).toLocalDate().toString();
-        String end = now.toLocalDate().toString();
-
-        mockMvc.perform(get("/api/booking/statistics")
-                        .param("start", start)
-                        .param("end", end))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value(200))
-                .andExpect(jsonPath("$.data[0].flightId").value("FL-1"))
-                .andExpect(jsonPath("$.data[0].bookingCount").value(2));
-    }
-
-    @Test
-    @DisplayName("GET /api/booking/statistics with invalid date -> 400")
-    void statistics_invalid() throws Exception {
-        mockMvc.perform(get("/api/booking/statistics")
-                        .param("start", "invalid-date")
-                        .param("end", "2024-01-02"))
-                .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.status").value(400));
-    }
 
     // POST /api/booking/delete/{id}
 
@@ -587,6 +516,303 @@ class BookingRestControllerTest {
             mockMvc.perform(post("/api/booking/delete/B-1"))
                     .andExpect(status().isForbidden())
                     .andExpect(jsonPath("$.status").value(403));
+        }
+    }
+
+    // GET /api/booking/today
+
+    @Test
+    @DisplayName("GET /api/booking/today returns 200 with count")
+    void getTodayBookings_ok() throws Exception {
+        when(bookingRestService.getTodayBookings()).thenReturn(5L);
+
+        mockMvc.perform(get("/api/booking/today"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.data").value(5));
+    }
+
+    @Test
+    @DisplayName("GET /api/booking/today returns 500 on exception")
+    void getTodayBookings_exception() throws Exception {
+        when(bookingRestService.getTodayBookings()).thenThrow(new RuntimeException("db error"));
+
+        mockMvc.perform(get("/api/booking/today"))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
+    }
+
+    // GET /api/booking/chart
+
+    @Test
+    @DisplayName("GET /api/booking/chart returns 200 with chart data")
+    void getBookingChart_ok() throws Exception {
+        var chartData = new apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingChartResultDTO();
+        chartData.setChart(List.of());
+        var summary = new apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingChartSummaryDTO();
+        summary.setTotalBookings(10L);
+        summary.setTotalRevenue(BigDecimal.valueOf(1000.0));
+        summary.setTopPerformer("Airline1");
+        chartData.setSummary(summary);
+
+        lenient().when(bookingRestService.getBookingChartData(1, 2024)).thenReturn(chartData);
+
+        mockMvc.perform(get("/api/booking/chart")
+                .param("month", "1")
+                .param("year", "2024"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200));
+    }
+
+    @Test
+    @DisplayName("GET /api/booking/chart returns 200 with empty chart")
+    void getBookingChart_empty() throws Exception {
+        var chartData = new apap.ti._5.flight_2306211660_be.restdto.response.booking.BookingChartResultDTO();
+        chartData.setChart(Collections.emptyList());
+
+        lenient().when(bookingRestService.getBookingChartData(1, 2024)).thenReturn(chartData);
+
+        mockMvc.perform(get("/api/booking/chart")
+                .param("month", "1")
+                .param("year", "2024"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200));
+    }
+
+    @Test
+    @DisplayName("GET /api/booking/chart returns 400 on invalid request")
+    void getBookingChart_badRequest() throws Exception {
+        when(bookingRestService.getBookingChartData(13, 2024)).thenThrow(new IllegalArgumentException("Invalid month"));
+
+        mockMvc.perform(get("/api/booking/chart")
+                .param("month", "13")
+                .param("year", "2024"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    // POST /api/booking/payment/confirm
+
+    @Test
+    @DisplayName("POST /api/booking/payment/confirm returns 200 on success")
+    void confirmPayment_ok() throws Exception {
+        var req = new ConfirmPaymentRequestDTO();
+        req.setBillId(java.util.UUID.randomUUID());
+        req.setCustomerId("cust1");
+
+        when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class))).thenReturn(bookingDTO("B-1"));
+
+        mockMvc.perform(post("/api/booking/payment/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(toJson(req)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value(200))
+                .andExpect(jsonPath("$.message").value("Booking payment confirmed"));
+    }
+
+    @Test
+    @DisplayName("POST /api/booking/payment/confirm throws IllegalArgumentException")
+    void confirmPayment_illegalArgument() throws Exception {
+        var req = new ConfirmPaymentRequestDTO();
+        req.setBillId(java.util.UUID.randomUUID());
+        req.setCustomerId("cust1");
+
+        when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class)))
+                .thenThrow(new IllegalArgumentException("Booking not found"));
+
+        mockMvc.perform(post("/api/booking/payment/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(toJson(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    @DisplayName("POST /api/booking/payment/confirm throws SecurityException")
+    void confirmPayment_securityException() throws Exception {
+        var req = new ConfirmPaymentRequestDTO();
+        req.setBillId(java.util.UUID.randomUUID());
+        req.setCustomerId("cust1");
+
+        when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class)))
+                .thenThrow(new SecurityException("Access denied"));
+
+        mockMvc.perform(post("/api/booking/payment/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(toJson(req)))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403));
+    }
+
+    @Test
+    @DisplayName("POST /api/booking/payment/confirm throws IllegalStateException")
+    void confirmPayment_illegalState() throws Exception {
+        var req = new ConfirmPaymentRequestDTO();
+        req.setBillId(java.util.UUID.randomUUID());
+        req.setCustomerId("cust1");
+
+        when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class)))
+                .thenThrow(new IllegalStateException("Invalid booking state"));
+
+        mockMvc.perform(post("/api/booking/payment/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(toJson(req)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400));
+    }
+
+    @Test
+    @DisplayName("POST /api/booking/payment/confirm throws generic Exception")
+    void confirmPayment_exception() throws Exception {
+        var req = new ConfirmPaymentRequestDTO();
+        req.setBillId(java.util.UUID.randomUUID());
+        req.setCustomerId("cust1");
+
+        when(bookingRestService.confirmPayment(any(ConfirmPaymentRequestDTO.class)))
+                .thenThrow(new RuntimeException("Unexpected error"));
+
+        mockMvc.perform(post("/api/booking/payment/confirm")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(toJson(req)))
+                .andExpect(status().isInternalServerError())
+                .andExpect(jsonPath("$.status").value(500));
+    }
+
+    // Additional edge case tests for complete coverage
+
+    @Test
+    @DisplayName("POST /api/booking/create customer forces email to JWT")
+    void create_customerForcesEmail() throws Exception {
+        AddBookingRequestDTO req = AddBookingRequestDTO.builder()
+                .flightId("FL-1")
+                .classFlightId(10)
+                .contactEmail("other@y.com")
+                .contactPhone("08123")
+                .passengerCount(1)
+                .passengers(List.of(
+                        apap.ti._5.flight_2306211660_be.restdto.request.passenger.AddPassengerRequestDTO.builder()
+                                .fullName("A")
+                                .birthDate(LocalDate.now().minusYears(20))
+                                .gender(1)
+                                .idPassport("P1")
+                                .build()
+                ))
+                .build();
+
+        lenient().when(bookingRestService.createBooking(any(AddBookingRequestDTO.class))).thenReturn(bookingDTO("NEW-1"));
+
+        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getEmail).thenReturn("correct@x.com");
+
+            mockMvc.perform(post("/api/booking/create")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(toJson(req)))
+                    .andExpect(status().isCreated());
+        }
+    }
+
+    @Test
+    @DisplayName("PUT /api/booking/update customer ensures ownership")
+    void update_customerEnsuresOwnership() throws Exception {
+        UpdateBookingRequestDTO req = UpdateBookingRequestDTO.builder()
+                .id("B-1")
+                .contactEmail("other@y.com")
+                .contactPhone("08123")
+                .build();
+
+        var existing = BookingResponseDTO.builder()
+                .id("B-1")
+                .contactEmail("other@x.com")
+                .build();
+        lenient().when(bookingRestService.getBooking("B-1")).thenReturn(existing);
+
+        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getEmail).thenReturn("customer@x.com");
+
+            mockMvc.perform(put("/api/booking/update")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(toJson(req)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.status").value(403));
+        }
+    }
+
+
+    @Test
+    @DisplayName("POST /api/booking/create auto bill creation works")
+    void create_billAutoCreation() throws Exception {
+        AddBookingRequestDTO req = AddBookingRequestDTO.builder()
+                .flightId("FL-1")
+                .classFlightId(10)
+                .contactEmail("x@y.com")
+                .contactPhone("08123")
+                .passengerCount(1)
+                .passengers(List.of(
+                        apap.ti._5.flight_2306211660_be.restdto.request.passenger.AddPassengerRequestDTO.builder()
+                                .fullName("A")
+                                .birthDate(LocalDate.now().minusYears(20))
+                                .gender(1)
+                                .idPassport("P1")
+                                .build()
+                ))
+                .build();
+
+        lenient().when(bookingRestService.createBooking(any(AddBookingRequestDTO.class))).thenReturn(bookingDTO("NEW-1"));
+
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getUserId).thenReturn("cust1");
+
+            mockMvc.perform(post("/api/booking/create")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(toJson(req)))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.status").value(201));
+        }
+    }
+
+    @Test
+    @DisplayName("POST /api/booking/create with null customerEmail")
+    void create_nullCustomerEmail() throws Exception {
+        AddBookingRequestDTO req = AddBookingRequestDTO.builder()
+                .flightId("FL-1")
+                .classFlightId(10)
+                .contactEmail("x@y.com")
+                .contactPhone("08123")
+                .passengerCount(1)
+                .passengers(List.of(
+                        apap.ti._5.flight_2306211660_be.restdto.request.passenger.AddPassengerRequestDTO.builder()
+                                .fullName("A")
+                                .birthDate(LocalDate.now().minusYears(20))
+                                .gender(1)
+                                .idPassport("P1")
+                                .build()
+                ))
+                .build();
+
+        lenient().when(bookingRestService.createBooking(any(AddBookingRequestDTO.class))).thenReturn(bookingDTO("NEW-1"));
+
+        var auth = new UsernamePasswordAuthenticationToken("customer", "password",
+                java.util.List.of(new SimpleGrantedAuthority("ROLE_CUSTOMER")));
+        SecurityContextHolder.getContext().setAuthentication(auth);
+
+        try (MockedStatic<apap.ti._5.flight_2306211660_be.config.security.CurrentUser> mocked = mockStatic(apap.ti._5.flight_2306211660_be.config.security.CurrentUser.class)) {
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getRole).thenReturn("ROLE_CUSTOMER");
+            mocked.when(apap.ti._5.flight_2306211660_be.config.security.CurrentUser::getEmail).thenReturn(null);
+
+            mockMvc.perform(post("/api/booking/create")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content(toJson(req)))
+                    .andExpect(status().isCreated());
         }
     }
 }

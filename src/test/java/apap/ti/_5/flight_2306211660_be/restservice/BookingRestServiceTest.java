@@ -1,7 +1,13 @@
 package apap.ti._5.flight_2306211660_be.restservice;
 
 import apap.ti._5.flight_2306211660_be.model.*;
-import apap.ti._5.flight_2306211660_be.repository.*;
+import apap.ti._5.flight_2306211660_be.repository.AirlineRepository;
+import apap.ti._5.flight_2306211660_be.repository.BookingPassengerRepository;
+import apap.ti._5.flight_2306211660_be.repository.BookingRepository;
+import apap.ti._5.flight_2306211660_be.repository.ClassFlightRepository;
+import apap.ti._5.flight_2306211660_be.repository.FlightRepository;
+import apap.ti._5.flight_2306211660_be.repository.PassengerRepository;
+import apap.ti._5.flight_2306211660_be.repository.SeatRepository;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.AddBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.booking.UpdateBookingRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.request.passenger.AddPassengerRequestDTO;
@@ -36,6 +42,7 @@ public class BookingRestServiceTest {
     @Mock private FlightRepository flightRepository;
     @Mock private ClassFlightRepository classFlightRepository;
     @Mock private SeatRepository seatRepository;
+    @Mock private AirlineRepository airlineRepository;
 
     @InjectMocks
     private BookingRestServiceImpl service;
@@ -574,5 +581,89 @@ public class BookingRestServiceTest {
         verify(seatRepository, times(2)).save(any(Seat.class));
         verify(classFlightRepository).save(cf);
         verify(bookingRepository, atLeastOnce()).save(any(Booking.class));
+    }
+
+    @Test
+    @DisplayName("getAllBookings(includeDeleted=true): returns all bookings")
+    void getAllBookings_includeDeleted() {
+        when(bookingRepository.findAll()).thenReturn(List.of(booking("B1", "FL-1", 10, 1, 1, false), booking("B2", "FL-2", 11, 1, 1, true)));
+        when(classFlightRepository.findById(anyInt())).thenReturn(Optional.of(classFlight(10, "economy", 10, 8, "1000000")));
+        when(bookingPassengerRepository.findByBookingId(anyString())).thenReturn(Collections.emptyList());
+
+        List<BookingResponseDTO> res = service.getAllBookings(true);
+        assertEquals(2, res.size());
+    }
+
+    @Test
+    @DisplayName("getBookingsByFlight with filters: applies search, contactEmail, status")
+    void getBookingsByFlight_withFilters() {
+        var b1 = booking("B1", "FL-1", 10, 1, 1, false);
+        b1.setContactEmail("test@x.com");
+        var b2 = booking("B2", "FL-1", 10, 1, 2, false);
+        b2.setContactEmail("other@y.com");
+        when(bookingRepository.findByFlightIdAndIsDeleted("FL-1", false)).thenReturn(List.of(b1, b2));
+        when(classFlightRepository.findById(10)).thenReturn(Optional.of(classFlight(10, "economy", 10, 8, "1000000")));
+        when(bookingPassengerRepository.findByBookingId(anyString())).thenReturn(Collections.emptyList());
+
+        List<BookingResponseDTO> res = service.getBookingsByFlight("FL-1", false, "B1", "test@x.com", 1);
+        assertEquals(1, res.size());
+        assertEquals("B1", res.get(0).getId());
+    }
+
+    @Test
+    @DisplayName("getTodayBookings: counts bookings created today")
+    void getTodayBookings() {
+        var today = LocalDateTime.now();
+        var b1 = booking("B1", "FL-1", 10, 1, 1, false);
+        b1.setCreatedAt(today);
+        var b2 = booking("B2", "FL-1", 10, 1, 1, false);
+        b2.setCreatedAt(today.minusDays(1)); // not today
+        when(bookingRepository.findByIsDeleted(false)).thenReturn(List.of(b1, b2));
+
+        long count = service.getTodayBookings();
+        assertEquals(1, count);
+    }
+
+
+    @Test
+    @DisplayName("getBookingChart: computes stats for month/year")
+    void getBookingChart() {
+        var now = LocalDateTime.now();
+        var b1 = booking("B1", "FL-1", 10, 1, 1, false); // Unpaid
+        b1.setCreatedAt(now.withMonth(10).withYear(2024));
+        var b2 = booking("B2", "FL-2", 10, 1, 2, false); // Paid
+        b2.setCreatedAt(now.withMonth(10).withYear(2024));
+        b2.setTotalPrice(BigDecimal.valueOf(100));
+        lenient().when(bookingRepository.findAll()).thenReturn(List.of(b1, b2));
+        lenient().when(airlineRepository.findById(anyString())).thenReturn(Optional.of(apap.ti._5.flight_2306211660_be.model.Airline.builder().name("Airline1").build()));
+
+        var chart = service.getBookingChart(10, 2024);
+        assertEquals(2, chart.size());
+        // Since not filtered by month/year, and grouped by flightId
+        var fl1 = chart.stream().filter(c -> "FL-1".equals(c.getFlightId())).findFirst().orElse(null);
+        var fl2 = chart.stream().filter(c -> "FL-2".equals(c.getFlightId())).findFirst().orElse(null);
+        assertNotNull(fl1);
+        assertNotNull(fl2);
+        assertEquals(1L, fl1.getTotalBookings());
+        assertEquals(BigDecimal.ZERO, fl1.getTotalRevenue());
+        assertEquals(1L, fl2.getTotalBookings());
+        assertEquals(BigDecimal.valueOf(100), fl2.getTotalRevenue());
+    }
+
+    @Test
+    @DisplayName("getBookingChartData: returns chart and summary")
+    void getBookingChartData() {
+        var now = LocalDateTime.now();
+        var b1 = booking("B1", "FL-1", 10, 1, 2, false); // Paid
+        b1.setCreatedAt(now.withMonth(10).withYear(2024));
+        b1.setTotalPrice(BigDecimal.valueOf(100));
+        lenient().when(bookingRepository.findAll()).thenReturn(List.of(b1));
+        lenient().when(airlineRepository.findById(anyString())).thenReturn(Optional.of(apap.ti._5.flight_2306211660_be.model.Airline.builder().name("Airline1").build()));
+
+        var data = service.getBookingChartData(10, 2024);
+        assertNotNull(data.getChart());
+        assertNotNull(data.getSummary());
+        assertEquals(1L, data.getSummary().getTotalBookings());
+        assertEquals(BigDecimal.valueOf(100), data.getSummary().getTotalRevenue());
     }
 }

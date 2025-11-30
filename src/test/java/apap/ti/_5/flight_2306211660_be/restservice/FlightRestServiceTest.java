@@ -25,9 +25,11 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import apap.ti._5.flight_2306211660_be.model.Airline;
@@ -50,6 +52,7 @@ import apap.ti._5.flight_2306211660_be.restdto.request.flight.UpdateFlightReques
 import apap.ti._5.flight_2306211660_be.restdto.request.seat.AddSeatRequestDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.classFlight.ClassFlightResponseDTO;
 import apap.ti._5.flight_2306211660_be.restdto.response.flight.FlightResponseDTO;
+import apap.ti._5.flight_2306211660_be.config.security.ProfileClient;
 import apap.ti._5.flight_2306211660_be.restservice.classFlight.ClassFlightRestService;
 import apap.ti._5.flight_2306211660_be.restservice.flight.FlightRestServiceImpl;
 import apap.ti._5.flight_2306211660_be.restservice.seat.SeatRestService;
@@ -66,6 +69,7 @@ public class FlightRestServiceTest {
     @Mock private SeatRepository seatRepository;
     @Mock private ClassFlightRepository classFlightRepository;
     @Mock private AirlineRepository airlineRepository;
+    @Mock private ProfileClient profileClient;
 
     @InjectMocks
     private FlightRestServiceImpl service;
@@ -291,24 +295,6 @@ public class FlightRestServiceTest {
         assertEquals(2, res.getStatus()); // In Flight
     }
 
-    @Test
-    @DisplayName("getAllFlightsWithFilters: includeDeleted true, apply filters, sort and update statuses")
-    void getAllFlightsWithFilters_fullPath() {
-        var now = LocalDateTime.now();
-        var f1 = flight("F5", "AL-A", "AP-A", "CGK", "DPS", now.minusHours(2), now.minusHours(1), 1, false); // becomes Finished(3)
-        var f2 = flight("F6", "AL-B", "AP-B", "SUB", "DPS", now.plusHours(1), now.plusHours(2), 1, false); // stays 1
-        var f3 = flight("F7", "AL-A", "AP-A", "CGK", "DPS", now.minusHours(1), now.plusMinutes(10), 2, false); // In Flight -> Finished when arrival passed
-        when(flightRepository.findAll()).thenReturn(List.of(f1, f2, f3));
-        lenient().when(flightRepository.save(any(Flight.class))).thenAnswer(inv -> inv.getArgument(0));
-        lenient().when(classFlightRestService.getClassFlightsByFlight(anyString())).thenReturn(Collections.emptyList());
-
-        // Filters: origin=CGK, dest=DPS, airline=AL-A, status=3, includeDeleted=true
-        // var res = service.getAllFlightsWithFilters("CGK", "DPS", "AL-A", 3, true);
-
-        // assertFalse(res.isEmpty());
-        // assertEquals("F5", res.get(0).getId());
-        // assertEquals(3, res.get(0).getStatus());
-    }
 
     @Test
     @DisplayName("getFlightDetail: not found returns null")
@@ -564,5 +550,45 @@ public class FlightRestServiceTest {
         verify(bookingRepository).save(booking);
         verify(classFlightRepository).save(cf);
         verify(flightRepository, atLeastOnce()).save(any(Flight.class));
+    }
+
+    @Test
+    @DisplayName("getAllFlightsWithFilters: applies origin, destination, airline, status, search filters")
+    void getAllFlightsWithFilters_success() {
+        var f1 = flight("F1", "AL-1", "AP1", "CGK", "DPS", LocalDateTime.now().plusHours(1), LocalDateTime.now().plusHours(2), 1, false);
+        var f2 = flight("F2", "AL-2", "AP2", "SUB", "DPS", LocalDateTime.now().plusHours(3), LocalDateTime.now().plusHours(4), 2, false);
+        when(flightRepository.findByIsDeleted(false)).thenReturn(List.of(f1, f2));
+        when(classFlightRestService.getClassFlightsByFlight(anyString())).thenReturn(Collections.emptyList());
+
+        var res = service.getAllFlightsWithFilters("CGK", "DPS", "AL-1", 1, false, "F1");
+        assertEquals(1, res.size());
+        assertEquals("F1", res.get(0).getId());
+    }
+
+    @Test
+    @DisplayName("getActiveFlightsTodayCount: counts scheduled/in-flight flights today")
+    void getActiveFlightsTodayCount() {
+        var today = LocalDateTime.now();
+        var f1 = flight("F1", "AL", "AP", "CGK", "DPS", today.withHour(10), today.withHour(11), 1, false); // Scheduled
+        var f2 = flight("F2", "AL", "AP", "CGK", "DPS", today.withHour(12), today.withHour(13), 2, false); // In Flight
+        var f3 = flight("F3", "AL", "AP", "CGK", "DPS", today.withHour(14), today.withHour(15), 3, false); // Finished - not counted
+        when(flightRepository.findByIsDeleted(false)).thenReturn(List.of(f1, f2, f3));
+
+        long count = service.getActiveFlightsTodayCount();
+        assertEquals(2, count);
+    }
+
+    @Test
+    @DisplayName("getFlightReminders: returns flights within interval with paid bookings")
+    void getFlightReminders() {
+        var now = LocalDateTime.now();
+        var f1 = flight("F1", "AL", "AP", "CGK", "DPS", now.plusMinutes(30), now.plusHours(1), 1, false); // Within 3 hours
+        var f2 = flight("F2", "AL", "AP", "CGK", "DPS", now.plusHours(4), now.plusHours(5), 1, false); // Outside 3 hours
+        when(flightRepository.findByIsDeleted(false)).thenReturn(List.of(f1, f2));
+        // Mock profile client - simplified
+        when(profileClient.getUserById("user1")).thenReturn(null); // Assume no user found, so no reminders
+
+        var reminders = service.getFlightReminders(3, "user1");
+        assertEquals(0, reminders.size()); // No reminders since user not found
     }
 }
