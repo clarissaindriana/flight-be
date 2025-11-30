@@ -316,6 +316,9 @@ public class ProfileClient {
         private String email;
         private String name;
         private String role;
+
+        // Map external field "saldo" from profile service into this property
+        @com.fasterxml.jackson.annotation.JsonProperty("saldo")
         private java.math.BigDecimal balance;
 
         public String getId() { return id; }

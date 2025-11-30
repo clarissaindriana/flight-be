@@ -15,7 +15,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
 
-import apap.ti._5.flight_2306211660_be.config.security.CurrentUser;
 import apap.ti._5.flight_2306211660_be.config.security.ProfileClient;
 import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.repository.BillRepository;
@@ -109,25 +108,21 @@ public class BillRestServiceImpl implements BillRestService {
         }
 
         BigDecimal finalAmount = bill.getAmount();
-
-                // Fetch customer profile for balance (balance check is early step) via /api/users/detail.
-                // Use email as primary search key (more stable across services), fall back to userId.
-                String searchKey = CurrentUser.getEmail();
-                if (searchKey == null || searchKey.isBlank()) {
-                    searchKey = customerIdFromToken;
-                }
-        
-                ProfileClient.ProfileUserWrapper detailWrapper = profileClient.getUserDetail(searchKey);
-                if (detailWrapper == null || detailWrapper.getData() == null) {
-                    // This will be treated as unexpected error by controller (500 with generic message)
-                    throw new RuntimeException("Unable to fetch user profile");
-                }
-
-        ProfileClient.ProfileUser user = detailWrapper.getData();
-        BigDecimal balance = user.getBalance() == null ? BigDecimal.ZERO : user.getBalance();
-
-        // Check balance first (all processes must be blocked if balance insufficient)
-        if (balance.compareTo(finalAmount) < 0) {
+ 
+        // Fetch customer profile for balance (balance check is early step) via /api/users/detail
+        // using the same search key you verified works (userId).
+        BigDecimal balance = null;
+        ProfileClient.ProfileUserWrapper detailWrapper = profileClient.getUserDetail(customerIdFromToken);
+        if (detailWrapper != null && detailWrapper.getData() != null) {
+            ProfileClient.ProfileUser user = detailWrapper.getData();
+            BigDecimal extBalance = user.getBalance();
+            if (extBalance != null) {
+                balance = extBalance;
+            }
+        }
+ 
+        // If we successfully obtained a balance from profile service, enforce local saldo check.
+        if (balance != null && balance.compareTo(finalAmount) < 0) {
             // 400 with this exact message as required
             throw new IllegalStateException("User balance insufficient, please Top Up balance.");
         }
