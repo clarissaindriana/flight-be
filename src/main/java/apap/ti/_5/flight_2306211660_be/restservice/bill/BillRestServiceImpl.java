@@ -108,22 +108,26 @@ public class BillRestServiceImpl implements BillRestService {
         }
 
         BigDecimal finalAmount = bill.getAmount();
- 
-        // Skip explicit profile balance fetch here and rely on external /api/users/payment
 
         // TODO: If couponCode provided, call Loyalty Service to validate and compute discount
-        // Currently skipped as per specification (external API not yet available).
+        // Currently skipped as per specification. Awaiting external Loyalty Service API.
+        // Expected: Loyalty Service should accept couponCode and return discount percentage/amount
+        // to reduce finalAmount before payment deduction.
 
         // Deduct saldo via /api/users/payment using SaldoUpdateRequestDTO to match external API
         SaldoUpdateRequestDTO saldoRequest = new SaldoUpdateRequestDTO();
         saldoRequest.setUserId(customerIdFromToken);
         saldoRequest.setAmount(finalAmount);
 
+        logger.info("Processing payment for bill {} with customerId: {}, amount: {}", id, customerIdFromToken, finalAmount);
+
         ProfileClient.ProfileUserWrapper paymentResult = profileClient.paymentSaldo(saldoRequest);
         if (paymentResult == null || paymentResult.getData() == null) {
-            // Any failure here is considered unexpected so controller returns generic 500 message
+            logger.error("Payment API returned null or empty data for bill: {}", id);
             throw new RuntimeException("Failed to process payment with profile service");
         }
+        
+        logger.info("Payment deducted successfully for bill: {}", id);
 
         // Update bill status to PAID
         bill.setStatus(Bill.BillStatus.PAID);
@@ -201,17 +205,21 @@ public class BillRestServiceImpl implements BillRestService {
             );
 
             // Determine internal callback path per service.
-            // For Flight (this service), expose /api/booking/confirmpayment.
-            // For Tour Package Vendor, keep the provided endpoint.
-            // For other services, we expect each to implement its own POST /confirmpayment.
-            String path;
-            if ("flight".equals(serviceNameLower)) {
-                path = "/api/booking/payment/confirm";
-            } else if ("tourpackage".equals(serviceNameLower)) {
-                path = "/api/package/payment/confirm";
-            } else {
-                path = "/payment/confirm"; // TODO: align with each service's internal confirmPayment endpoint
-            }
+            // For Flight (this service), expose /api/booking/payment/confirm.
+            // For Tour Package Vendor, use /api/package/payment/confirm.
+            // For other services, awaiting endpoint details.
+            // TODO: Confirm callback endpoint paths with each service provider:
+            // - Accommodation: awaiting internal API endpoint details from Accommodation Owner
+            // - Vehicle Rental: awaiting internal API endpoint details from Rental Vendor
+            // - Insurance: awaiting internal API endpoint details from Insurance Provider
+            String path = switch (serviceNameLower) {
+                case "flight" -> "/api/booking/payment/confirm";
+                case "tourpackage" -> "/api/package/payment/confirm";
+                case "accommodation" -> "/api/accommodation/payment/confirm"; // TODO: confirm with Accommodation service
+                case "vehiclerental" -> "/api/rental/payment/confirm"; // TODO: confirm with Vehicle Rental service
+                case "insurance" -> "/api/insurance/payment/confirm"; // TODO: confirm with Insurance service
+                default -> "/payment/confirm"; // Default fallback
+            };
 
             wc.post()
                     .uri(path)

@@ -278,22 +278,50 @@ public class ProfileClient {
         }
     }
 
-        // Deduct saldo via /api/users/payment
-                public ProfileUserWrapper paymentSaldo(apap.ti._5.flight_2306211660_be.restdto.request.bill.SaldoUpdateRequestDTO request) {
-                    try {
-                        Mono<ProfileUserWrapper> mono = webClient.post()
-                                .uri("/api/users/payment")
-                                .header("X-API-Key", "API_KEY_APAP")
-                                .bodyValue(request)
-                                .retrieve()
-                                .bodyToMono(ProfileUserWrapper.class)
-                                .onErrorReturn(null);
-        
-                        return mono.block();
-                    } catch (Exception ex) {
-                        return null;
-                    }
-                }
+    /**
+     * Deduct saldo via /api/users/payment.
+     * Throws exception on failure so caller can handle properly.
+     */
+    public ProfileUserWrapper paymentSaldo(apap.ti._5.flight_2306211660_be.restdto.request.bill.SaldoUpdateRequestDTO request) throws Exception {
+        if (request == null || request.getUserId() == null || request.getAmount() == null) {
+            throw new IllegalArgumentException("Invalid payment request: userId and amount are required");
+        }
+
+        try {
+            logger.info("Payment request: userId={}, amount={}", request.getUserId(), request.getAmount());
+            
+            Mono<ProfileUserWrapper> mono = webClient.post()
+                    .uri("/api/users/payment")
+                    .header("X-API-Key", "API_KEY_APAP")
+                    .bodyValue(request)
+                    .retrieve()
+                    .onStatus(
+                        status -> !status.is2xxSuccessful(),
+                        clientResponse -> clientResponse.bodyToMono(String.class).flatMap(body -> {
+                            logger.error("Profile payment HTTP error: status={}, body={}", clientResponse.statusCode(), body);
+                            return Mono.error(new RuntimeException("Payment API returned " + clientResponse.statusCode() + ": " + body));
+                        })
+                    )
+                    .bodyToMono(ProfileUserWrapper.class)
+                    .timeout(Duration.ofSeconds(10))
+                    .onErrorMap(ex -> {
+                        if (ex.getMessage() != null && ex.getMessage().contains("insufficient")) {
+                            return new IllegalStateException("User balance insufficient, please Top Up balance.");
+                        }
+                        return new RuntimeException("Payment API error: " + ex.getMessage(), ex);
+                    });
+
+            ProfileUserWrapper result = mono.block();
+            if (result == null) {
+                throw new RuntimeException("Payment API returned empty response");
+            }
+            logger.info("Payment successful for userId: {}", request.getUserId());
+            return result;
+        } catch (Exception ex) {
+            logger.error("Payment error: {}", ex.getMessage(), ex);
+            throw ex;
+        }
+    }
 
     // Update user profile: PUT /api/users/{id}
     public ProfileUserWrapper updateUser(String id, Object payload) {
