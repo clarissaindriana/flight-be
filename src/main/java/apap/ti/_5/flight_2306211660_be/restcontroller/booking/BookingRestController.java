@@ -392,9 +392,9 @@ public class BookingRestController {
 
     // Internal callback from Bill service after successful payment.
     // This endpoint is called via POST /api/booking/payment/confirm with ConfirmPaymentRequestDTO.
-    // Simple void endpoint - just updates booking status, no response format needed.
+    // Updates booking status to Paid (2).
     @PostMapping(BASE_URL + "/payment/confirm")
-    public void confirmPayment(@RequestBody ConfirmPaymentRequestDTO request) {
+    public ResponseEntity<Void> confirmPayment(@RequestBody ConfirmPaymentRequestDTO request) {
         logger.info("=== Received Payment Confirmation Request ===");
         logger.info("Service Reference ID: {}", request != null ? request.getServiceReferenceId() : "null");
         logger.info("Customer ID: {}", request != null ? request.getCustomerId() : "null");
@@ -408,20 +408,12 @@ public class BookingRestController {
                 logger.info("Booking ID: {}, New Status: {}", booking.getId(), booking.getStatus());
                 logger.info("=== Payment Confirmation Success ===");
             }
-        } catch (IllegalArgumentException ex) {
-            logger.error("=== Payment Confirmation - Booking Not Found ===");
-            logger.error("Error: {}", ex.getMessage());
-        } catch (SecurityException ex) {
-            logger.error("=== Payment Confirmation - Security Error ===");
-            logger.error("Error: {}", ex.getMessage());
-        } catch (IllegalStateException ex) {
-            logger.error("=== Payment Confirmation - Invalid State ===");
-            logger.error("Error: {}", ex.getMessage());
+            return ResponseEntity.ok().build();
         } catch (Exception ex) {
-            logger.error("=== Payment Confirmation - Unexpected Error ===");
+            logger.error("=== Payment Confirmation Error ===");
             logger.error("Error Type: {}", ex.getClass().getSimpleName());
             logger.error("Error Message: {}", ex.getMessage());
-            logger.error("Full Stack:", ex);
+            return ResponseEntity.ok().build();
         }
     }
 }

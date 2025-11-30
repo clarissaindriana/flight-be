@@ -127,14 +127,14 @@ public class BookingClient {
 
     /**
      * Get the endpoint path based on service name.
-     * Format: /api/{serviceName}/payment/confirm
+     * Format: /api/booking/payment/confirm (universal for all services)
      * Special case: insurance service uses "policy" endpoint
      */
     private String getServiceEndpoint(String serviceNameLower) {
         if ("insurance".equals(serviceNameLower)) {
             return "/api/policy/payment/confirm";
         }
-        return "/api/" + serviceNameLower + "/payment/confirm";
+        return "/api/booking/payment/confirm";
     }
 
     // Generic wrapper class for service responses
