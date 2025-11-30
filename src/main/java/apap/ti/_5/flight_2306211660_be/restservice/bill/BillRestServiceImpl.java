@@ -1,7 +1,6 @@
 package apap.ti._5.flight_2306211660_be.restservice.bill;
 
 import java.math.BigDecimal;
-import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -11,11 +10,10 @@ import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.core.env.Environment;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.reactive.function.client.WebClient;
 
+import apap.ti._5.flight_2306211660_be.config.security.BookingClient;
 import apap.ti._5.flight_2306211660_be.config.security.ProfileClient;
 import apap.ti._5.flight_2306211660_be.model.Bill;
 import apap.ti._5.flight_2306211660_be.repository.BillRepository;
@@ -29,13 +27,13 @@ public class BillRestServiceImpl implements BillRestService {
 
     private final BillRepository billRepository;
     private final ProfileClient profileClient;
-    private final Environment env;
+    private final BookingClient bookingClient;
     private final Logger logger = LoggerFactory.getLogger(BillRestServiceImpl.class);
 
-    public BillRestServiceImpl(BillRepository billRepository, ProfileClient profileClient, Environment env) {
+    public BillRestServiceImpl(BillRepository billRepository, ProfileClient profileClient, BookingClient bookingClient) {
         this.billRepository = billRepository;
         this.profileClient = profileClient;
-        this.env = env;
+        this.bookingClient = bookingClient;
     }
 
     @Override
@@ -135,11 +133,20 @@ public class BillRestServiceImpl implements BillRestService {
         bill.setPaymentTimestamp(LocalDateTime.now());
         bill = billRepository.save(bill);
 
-        // Send callback to origin service (best-effort)
+        // Update service resource status via BookingClient
         try {
-            sendCallbackToOriginService(bill);
+            ConfirmPaymentRequestDTO confirmPaymentDTO = new ConfirmPaymentRequestDTO(
+                    bill.getServiceReferenceId(),
+                    bill.getCustomerId()
+            );
+            var serviceResponse = bookingClient.confirmPayment(bill.getServiceName(), confirmPaymentDTO);
+            if (serviceResponse != null) {
+                logger.info("Service {} status updated successfully for resource: {}", bill.getServiceName(), bill.getServiceReferenceId());
+            } else {
+                logger.warn("Failed to update {} status for resource: {}", bill.getServiceName(), bill.getServiceReferenceId());
+            }
         } catch (Exception ex) {
-            logger.warn("Callback to origin service failed: {}", ex.getMessage());
+            logger.error("Error updating {} status: {}", bill.getServiceName(), ex.getMessage(), ex);
         }
 
         // TODO: Add loyalty points (1% of amount, rounded up) to customer via Loyalty Service
@@ -184,66 +191,5 @@ public class BillRestServiceImpl implements BillRestService {
             }
             return true;
         }).collect(Collectors.toList());
-    }
-
-    private void sendCallbackToOriginService(Bill bill) {
-        // Attempt to call origin service callback URL if configured via property
-        String serviceNameLower = bill.getServiceName() == null ? "" : bill.getServiceName().toLowerCase();
-        String key = "service.callback.base-url." + serviceNameLower;
-        String base = env.getProperty(key, "");
-        if (base == null || base.isBlank()) {
-            logger.info("No callback base URL configured for service {} (property {}). Skipping callback.", bill.getServiceName(), key);
-            return;
-        }
-
-        try {
-            WebClient wc = WebClient.builder()
-                    .baseUrl(base)
-                    .build();
-
-            // Build standard ConfirmPaymentRequestDTO callback payload with serviceReferenceId
-            ConfirmPaymentRequestDTO payload = new ConfirmPaymentRequestDTO(
-                    bill.getServiceReferenceId(),
-                    bill.getCustomerId()
-            );
-
-            // Determine internal callback path per service.
-            // For Flight (this service), expose /api/booking/payment/confirm.
-            // For Tour Package Vendor, use /api/package/payment/confirm.
-            // For other services, awaiting endpoint details.
-            // TODO: Confirm callback endpoint paths with each service provider:
-            // - Accommodation: awaiting internal API endpoint details from Accommodation Owner
-            // - Vehicle Rental: awaiting internal API endpoint details from Rental Vendor
-            // - Insurance: awaiting internal API endpoint details from Insurance Provider
-            String path = switch (serviceNameLower) {
-                case "flight" -> "/api/booking/payment/confirm";
-                case "tourpackage" -> "/api/package/payment/confirm";
-                case "accommodation" -> "/api/accommodation/payment/confirm"; // TODO: confirm with Accommodation service
-                case "vehiclerental" -> "/api/rental/payment/confirm"; // TODO: confirm with Vehicle Rental service
-                case "insurance" -> "/api/insurance/payment/confirm"; // TODO: confirm with Insurance service
-                default -> "/payment/confirm"; // Default fallback
-            };
-
-            logger.info("Sending payment callback to: {}{} for bill: {}", base, path, bill.getId());
-
-            wc.post()
-                    .uri(path)
-                    .bodyValue(payload)
-                    .retrieve()
-                    .onStatus(
-                        status -> !status.is2xxSuccessful(),
-                        clientResponse -> clientResponse.bodyToMono(String.class).flatMap(body -> {
-                            logger.error("Callback HTTP error: status={}, body={}", clientResponse.statusCode(), body);
-                            return reactor.core.publisher.Mono.error(new RuntimeException("HTTP " + clientResponse.statusCode() + ": " + body));
-                        })
-                    )
-                    .bodyToMono(Object.class)
-                    .timeout(Duration.ofSeconds(5))
-                    .block();
-
-            logger.info("ConfirmPayment callback sent successfully to {}{}", base, path);
-        } catch (Exception ex) {
-            logger.error("Failed to send confirmPayment callback to origin service {}: {} - {}", bill.getServiceName(), ex.getClass().getSimpleName(), ex.getMessage(), ex);
-        }
     }
 }
