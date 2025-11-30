@@ -42,14 +42,13 @@ public class BookingClient {
      * Confirm payment and update service resource status.
      * Routes to the appropriate service based on serviceName.
      * 
-     * @param serviceName The name of the service (flight, insurance, tourpackage, accomodation, vehiclerental)
+     * @param serviceName The name of the service (flight, insurance, tourpackage, accommodation, vehiclerental)
      * @param dto Contains serviceReferenceId (resource ID) and customerId
-     * @return Updated resource response or null on failure
      */
-    public ServiceResponseWrapper confirmPayment(String serviceName, ConfirmPaymentRequestDTO dto) {
+    public void confirmPayment(String serviceName, ConfirmPaymentRequestDTO dto) {
         if (serviceName == null || serviceName.isBlank() || dto == null || dto.getServiceReferenceId() == null) {
             logger.warn("Invalid confirm payment request: serviceName or serviceReferenceId is null");
-            return null;
+            return;
         }
 
         String serviceNameLower = serviceName.toLowerCase();
@@ -58,49 +57,57 @@ public class BookingClient {
 
         if (serviceUrl == null || serviceUrl.isBlank()) {
             logger.warn("No service URL configured for service: {}", serviceName);
-            return null;
+            return;
         }
 
         try {
-            logger.info("Confirming payment for {} service: {} (customer: {})", 
-                    serviceNameLower, dto.getServiceReferenceId(), dto.getCustomerId());
+            logger.info("=== Starting Payment Confirmation ===");
+            logger.info("Service: {}", serviceNameLower);
+            logger.info("Service URL: {}", serviceUrl);
+            logger.info("Endpoint: {}", endpoint);
+            logger.info("Full URL: {}{}", serviceUrl, endpoint);
+            logger.info("Service Reference ID: {}", dto.getServiceReferenceId());
+            logger.info("Customer ID: {}", dto.getCustomerId());
 
             WebClient wc = WebClient.builder()
                     .baseUrl(serviceUrl)
                     .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                     .build();
 
-            Mono<ServiceResponseWrapper> mono = wc.post()
+            logger.info("Sending POST request to update booking status...");
+
+            wc.post()
                     .uri(endpoint)
                     .bodyValue(dto)
                     .retrieve()
                     .onStatus(
                         status -> !status.is2xxSuccessful(),
                         clientResponse -> clientResponse.bodyToMono(String.class).flatMap(body -> {
-                            logger.error("{} service confirm payment HTTP error: status={}, body={}", 
-                                    serviceNameLower, clientResponse.statusCode(), body);
+                            logger.error("=== Payment Confirmation HTTP Error ===");
+                            logger.error("Service: {}", serviceNameLower);
+                            logger.error("Status Code: {}", clientResponse.statusCode());
+                            logger.error("Response Body: {}", body);
                             return Mono.error(new RuntimeException(serviceNameLower + " service HTTP " + clientResponse.statusCode() + ": " + body));
                         })
                     )
-                    .bodyToMono(ServiceResponseWrapper.class)
+                    .toBodilessEntity()
                     .timeout(Duration.ofSeconds(5))
-                    .onErrorResume(ex -> {
-                        logger.error("{} service confirm payment error/timeout: {}", serviceNameLower, ex.getMessage());
-                        return Mono.empty();
-                    });
+                    .doOnSuccess(response -> logger.info("=== Payment Confirmation Success ===\nService: {}\nBooking status updated successfully", serviceNameLower))
+                    .doOnError(error -> {
+                        logger.error("=== Payment Confirmation Error/Timeout ===");
+                        logger.error("Service: {}", serviceNameLower);
+                        logger.error("Error Type: {}", error.getClass().getSimpleName());
+                        logger.error("Error Message: {}", error.getMessage());
+                    })
+                    .block();
 
-            ServiceResponseWrapper wrapper = mono.block();
-            if (wrapper == null) {
-                logger.warn("{} service returned null response for confirm payment", serviceNameLower);
-                return null;
-            }
-
-            logger.info("Payment confirmed successfully for {} service: {}", serviceNameLower, dto.getServiceReferenceId());
-            return wrapper;
+            logger.info("Payment confirmation completed for: {}", serviceNameLower);
         } catch (Exception ex) {
-            logger.error("Failed to confirm payment with {} service: {} - {}", 
-                    serviceNameLower, ex.getClass().getSimpleName(), ex.getMessage(), ex);
-            return null;
+            logger.error("=== Payment Confirmation Exception ===");
+            logger.error("Service: {}", serviceNameLower);
+            logger.error("Exception Type: {}", ex.getClass().getSimpleName());
+            logger.error("Exception Message: {}", ex.getMessage());
+            logger.error("Full Stack:", ex);
         }
     }
 

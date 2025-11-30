@@ -139,12 +139,8 @@ public class BillRestServiceImpl implements BillRestService {
                     bill.getServiceReferenceId(),
                     bill.getCustomerId()
             );
-            var serviceResponse = bookingClient.confirmPayment(bill.getServiceName(), confirmPaymentDTO);
-            if (serviceResponse != null) {
-                logger.info("Service {} status updated successfully for resource: {}", bill.getServiceName(), bill.getServiceReferenceId());
-            } else {
-                logger.warn("Failed to update {} status for resource: {}", bill.getServiceName(), bill.getServiceReferenceId());
-            }
+            bookingClient.confirmPayment(bill.getServiceName(), confirmPaymentDTO);
+            logger.info("Service {} status update initiated for resource: {}", bill.getServiceName(), bill.getServiceReferenceId());
         } catch (Exception ex) {
             logger.error("Error updating {} status: {}", bill.getServiceName(), ex.getMessage(), ex);
         }

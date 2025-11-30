@@ -695,7 +695,6 @@ public class BookingRestServiceImpl implements BookingRestService {
     }
  
     @Override
-    @Transactional
     public BookingResponseDTO confirmPayment(ConfirmPaymentRequestDTO dto) {
         if (dto == null || dto.getServiceReferenceId() == null) {
             throw new IllegalArgumentException("Service reference ID (booking ID) is required");

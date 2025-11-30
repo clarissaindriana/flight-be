@@ -391,40 +391,37 @@ public class BookingRestController {
     }
 
     // Internal callback from Bill service after successful payment.
-    // This endpoint is called via POST /api/booking/confirmpayment with ConfirmPaymentRequestDTO.
+    // This endpoint is called via POST /api/booking/payment/confirm with ConfirmPaymentRequestDTO.
+    // Simple void endpoint - just updates booking status, no response format needed.
     @PostMapping(BASE_URL + "/payment/confirm")
-    public ResponseEntity<BaseResponseDTO<BookingResponseDTO>> confirmPayment(
-            @RequestBody ConfirmPaymentRequestDTO request) {
-        var baseResponseDTO = new BaseResponseDTO<BookingResponseDTO>();
+    public void confirmPayment(@RequestBody ConfirmPaymentRequestDTO request) {
+        logger.info("=== Received Payment Confirmation Request ===");
+        logger.info("Service Reference ID: {}", request != null ? request.getServiceReferenceId() : "null");
+        logger.info("Customer ID: {}", request != null ? request.getCustomerId() : "null");
 
         try {
+            logger.info("Calling bookingRestService.confirmPayment...");
             BookingResponseDTO booking = bookingRestService.confirmPayment(request);
-
-            baseResponseDTO.setStatus(HttpStatus.OK.value());
-            baseResponseDTO.setData(booking);
-            baseResponseDTO.setMessage("Booking payment confirmed");
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.OK);
+            
+            logger.info("confirmPayment returned: {}", booking != null ? "BookingResponseDTO" : "null");
+            if (booking != null) {
+                logger.info("Booking ID: {}, New Status: {}", booking.getId(), booking.getStatus());
+                logger.info("=== Payment Confirmation Success ===");
+            }
         } catch (IllegalArgumentException ex) {
-            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
-            baseResponseDTO.setMessage(ex.getMessage());
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
+            logger.error("=== Payment Confirmation - Booking Not Found ===");
+            logger.error("Error: {}", ex.getMessage());
         } catch (SecurityException ex) {
-            baseResponseDTO.setStatus(HttpStatus.FORBIDDEN.value());
-            baseResponseDTO.setMessage(ex.getMessage());
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.FORBIDDEN);
+            logger.error("=== Payment Confirmation - Security Error ===");
+            logger.error("Error: {}", ex.getMessage());
         } catch (IllegalStateException ex) {
-            baseResponseDTO.setStatus(HttpStatus.BAD_REQUEST.value());
-            baseResponseDTO.setMessage(ex.getMessage());
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.BAD_REQUEST);
+            logger.error("=== Payment Confirmation - Invalid State ===");
+            logger.error("Error: {}", ex.getMessage());
         } catch (Exception ex) {
-            baseResponseDTO.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
-            baseResponseDTO.setMessage("Terjadi kesalahan pada server: " + ex.getMessage());
-            baseResponseDTO.setTimestamp(new Date());
-            return new ResponseEntity<>(baseResponseDTO, HttpStatus.INTERNAL_SERVER_ERROR);
+            logger.error("=== Payment Confirmation - Unexpected Error ===");
+            logger.error("Error Type: {}", ex.getClass().getSimpleName());
+            logger.error("Error Message: {}", ex.getMessage());
+            logger.error("Full Stack:", ex);
         }
     }
 }
